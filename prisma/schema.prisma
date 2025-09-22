@@ -1,0 +1,172 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Modelo de Usuario (Admin y Técnicos)
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      UserRole @default(TECHNICIAN)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  assignedTasks Task[] @relation("TechnicianTasks")
+  createdTasks  Task[] @relation("CreatedTasks")
+  quotes        Quote[]
+
+  @@map("users")
+}
+
+// Modelo de Cliente
+model Customer {
+  id          String   @id @default(cuid())
+  name        String
+  email       String?
+  phone       String
+  address     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  vehicles Vehicle[]
+  quotes   Quote[]
+
+  @@map("customers")
+}
+
+// Modelo de Vehículo
+model Vehicle {
+  id           String        @id @default(cuid())
+  trackingCode String        @unique
+  brand        String
+  model        String
+  year         Int
+  licensePlate String?
+  color        String?
+  mileage      Int?
+  customerId   String
+  status       VehicleStatus @default(RECEIVED)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Relaciones
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tasks    Task[]
+  quotes   Quote[]
+
+  @@map("vehicles")
+}
+
+// Modelo de Tarea/Trabajo
+model Task {
+  id           String     @id @default(cuid())
+  title        String
+  description  String     @db.Text
+  status       TaskStatus @default(PENDING)
+  priority     Priority   @default(MEDIUM)
+  estimatedTime Int?      // en minutos
+  actualTime   Int?       // en minutos
+  vehicleId    String
+  technicianId String?
+  createdById  String
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  // Relaciones
+  vehicle     Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  technician  User?   @relation("TechnicianTasks", fields: [technicianId], references: [id])
+  createdBy   User    @relation("CreatedTasks", fields: [createdById], references: [id])
+
+  @@map("tasks")
+}
+
+// Modelo de Cotización
+model Quote {
+  id           String      @id @default(cuid())
+  quoteNumber  String      @unique
+  description  String      @db.Text
+  subtotal     Decimal     @db.Decimal(10, 2)
+  tax          Decimal     @db.Decimal(10, 2)
+  total        Decimal     @db.Decimal(10, 2)
+  status       QuoteStatus @default(DRAFT)
+  validUntil   DateTime
+  vehicleId    String
+  customerId   String
+  createdById  String
+  approvedAt   DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  // Relaciones
+  vehicle   Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  customer  Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdBy User       @relation(fields: [createdById], references: [id])
+  items     QuoteItem[]
+
+  @@map("quotes")
+}
+
+// Modelo de Item de Cotización
+model QuoteItem {
+  id          String  @id @default(cuid())
+  description String
+  quantity    Int
+  unitPrice   Decimal @db.Decimal(10, 2)
+  total       Decimal @db.Decimal(10, 2)
+  quoteId     String
+
+  // Relaciones
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@map("quote_items")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  TECHNICIAN
+}
+
+enum VehicleStatus {
+  RECEIVED
+  IN_PROGRESS
+  WAITING_PARTS
+  COMPLETED
+  DELIVERED
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+}
