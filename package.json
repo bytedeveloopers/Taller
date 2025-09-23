@@ -13,6 +13,7 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@prisma/client": "^6.0.0",
     "autoprefixer": "^10.4.21",
     "bcryptjs": "^2.4.3",

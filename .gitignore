@@ -73,6 +73,16 @@ dist
 .env.test.local
 .env.production.local
 
+# Database credentials and connection strings
+.env.database
+database.url
+
+# Uploaded files and user content
+uploads/
+user-uploads/
+vehicle-images/
+profile-pictures/
+
 # Vercel
 .vercel
 
@@ -126,3 +136,25 @@ Desktop.ini
 
 # Local environment variables that shouldn't be shared
 .env.local.example
+
+# Development and testing
+coverage/
+test-results/
+playwright-report/
+test-results.xml
+
+# Build artifacts
+dist/
+build/
+.turbo/
+
+# Cache directories
+.cache/
+.parcel-cache/
+.eslintcache
+
+# Runtime and temporary files
+*.tmp
+*.temp
+.DS_Store?
+._*
