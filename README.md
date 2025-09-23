@@ -1,132 +1,175 @@
-# Taller Management System
+Taller Management System
 
 Sistema de gestión para talleres mecánicos desarrollado con Next.js, TypeScript y Prisma.
 
-## 🚀 Características
+🚀 Características
+🔹 Landing Page
 
-### Landing Page
+Hero section con efecto parallax y botón de seguimiento interactivo.
 
-- Información del taller
-- Sistema de búsqueda de vehículos por código de seguimiento
-- Estado en tiempo real del vehículo
+Sección de servicios con 6 tarjetas animadas y carrusel de instalaciones.
 
-### Panel de Administración
+Componente de agenda con formulario completo y validación.
 
-- Dashboard con estadísticas
-- Gestión de usuarios (técnicos)
-- Asignación de tareas
-- Generación de cotizaciones
-- Gestión de clientes y vehículos
+Sección Nosotros con mapa embebido e información empresarial.
 
-### Panel de Técnicos
+Footer profesional con tres columnas y enlaces rápidos.
 
-- Dashboard simplificado
-- Gestión de tareas asignadas
-- Actualización de estados de trabajo
+Navbar responsive con detección de sección activa.
 
-## 🛠️ Tecnologías
+Animaciones con IntersectionObserver en todas las secciones.
 
-- **Frontend**: Next.js 15 con TypeScript
-- **Styling**: Tailwind CSS
-- **Base de datos**: MySQL con Prisma ORM
-- **Autenticación**: NextAuth.js
-- **UI Components**: Lucide React para iconos
+Diseño completamente responsive (móvil + desktop).
 
-## 📁 Estructura del Proyecto
+Tema oscuro consistente con paleta verde #7CFC00.
 
-```
+🔹 Panel de Administración
+
+Dashboard con estadísticas.
+
+Gestión de usuarios (técnicos).
+
+Asignación de tareas.
+
+Generación de cotizaciones.
+
+Gestión de clientes y vehículos.
+
+🔹 Panel de Técnicos
+
+Dashboard simplificado.
+
+Gestión de tareas asignadas.
+
+Actualización de estados de trabajo.
+
+🔹 Sistema de Seguimiento
+
+Consulta de vehículos por código de seguimiento.
+
+Estado en tiempo real del vehículo.
+
+🔹 Seguridad y Acceso
+
+Página de login admin básica (/admin).
+
+Autenticación con NextAuth.js.
+
+🛠️ Tecnologías
+
+Frontend: Next.js 15 con TypeScript
+
+Styling: Tailwind CSS
+
+Base de datos: MySQL con Prisma ORM
+
+Autenticación: NextAuth.js
+
+UI Components: Lucide React
+
+📁 Estructura del Proyecto
 src/
-├── app/                    # App Router de Next.js
-│   ├── admin/             # Rutas del panel de administración
-│   ├── technician/        # Rutas del panel de técnicos
-│   └── api/               # API Routes
-│       ├── auth/          # Autenticación
-│       ├── vehicles/      # Gestión de vehículos
-│       ├── users/         # Gestión de usuarios
-│       ├── tasks/         # Gestión de tareas
-│       └── quotes/        # Gestión de cotizaciones
+├── app/                    
+│   ├── admin/              # Panel de administración
+│   ├── technician/         # Panel de técnicos
+│   ├── api/                # API Routes
+│   │   ├── auth/           # Autenticación
+│   │   ├── vehicles/       # Gestión de vehículos
+│   │   ├── users/          # Gestión de usuarios
+│   │   ├── tasks/          # Gestión de tareas
+│   │   └── quotes/         # Gestión de cotizaciones
+│   └── globals.css         # Estilos globales
 ├── components/
-│   ├── landing/           # Componentes del landing page
-│   ├── admin/             # Componentes del panel admin
-│   ├── technician/        # Componentes del panel técnico
-│   ├── common/            # Componentes compartidos
-│   ├── layout/            # Layouts
-│   └── ui/                # Componentes UI básicos
-├── lib/                   # Utilidades y configuraciones
-├── types/                 # Definiciones de tipos TypeScript
-└── app/globals.css        # Estilos globales
+│   ├── landing/            # Hero, Servicios, Carrusel, Agenda, Nosotros, Footer
+│   ├── admin/              # Panel admin
+│   ├── technician/         # Panel técnico
+│   ├── common/             # Componentes compartidos
+│   ├── layout/             # Navbar, layouts
+│   └── ui/                 # UI básicos
+├── hooks/                  # Hooks (IntersectionObserver, etc.)
+├── lib/                    # Utilidades y configuraciones
+└── types/                  # Definiciones TS
 
 prisma/
-├── schema.prisma          # Esquema de la base de datos
-└── migrations/            # Migraciones de la base de datos
-```
+├── schema.prisma           # Esquema BD
+└── migrations/             # Migraciones BD
 
-## 🗄️ Modelo de Base de Datos
+🗄️ Modelo de Base de Datos
 
-- **Users**: Administradores y técnicos
-- **Customers**: Clientes del taller
-- **Vehicles**: Vehículos con código de seguimiento
-- **Tasks**: Tareas/trabajos asignados
-- **Quotes**: Cotizaciones y presupuestos
-- **QuoteItems**: Items de las cotizaciones
+Users: Administradores y técnicos
 
-## 🚀 Instalación
+Customers: Clientes del taller
 
-1. Instalar dependencias:
+Vehicles: Vehículos con código de seguimiento
 
-```bash
+Tasks: Tareas/trabajos asignados
+
+Quotes: Cotizaciones y presupuestos
+
+QuoteItems: Items de las cotizaciones
+
+🚀 Instalación
+
+Instalar dependencias:
+
 npm install
-```
 
-2. Configurar variables de entorno:
 
-```bash
+Configurar variables de entorno:
+
 cp .env.example .env
-```
 
-3. Configurar la base de datos:
 
-```bash
+Configurar la base de datos:
+
 npm run db:push
-```
 
-4. Generar el cliente de Prisma:
 
-```bash
+Generar el cliente de Prisma:
+
 npm run db:generate
-```
 
-5. Ejecutar en desarrollo:
 
-```bash
+Ejecutar en desarrollo:
+
 npm run dev
-```
 
-## 📝 Scripts Disponibles
+📝 Scripts Disponibles
 
-- `npm run dev` - Ejecutar en modo desarrollo
-- `npm run build` - Construir para producción
-- `npm run start` - Ejecutar en producción
-- `npm run lint` - Ejecutar linter
-- `npm run db:generate` - Generar cliente Prisma
-- `npm run db:push` - Aplicar cambios a la BD
-- `npm run db:migrate` - Ejecutar migraciones
-- `npm run db:studio` - Abrir Prisma Studio
+npm run dev → Desarrollo
 
-## 🔧 Configuración
+npm run build → Build producción
 
-Configura las siguientes variables de entorno en tu archivo `.env`:
+npm run start → Ejecutar en producción
 
-- `DATABASE_URL`: URL de conexión a MySQL
-- `NEXTAUTH_SECRET`: Secret para NextAuth.js
-- `NEXTAUTH_URL`: URL de la aplicación
-- `JWT_SECRET`: Secret para JWT
+npm run lint → Linter
 
-## 🏗️ Estado del Proyecto
+npm run db:generate → Cliente Prisma
 
+npm run db:push → Push BD
+
+npm run db:migrate → Migraciones
+
+npm run db:studio → Prisma Studio
+
+🔧 Configuración
+
+Variables necesarias en .env:
+
+DATABASE_URL → URL conexión MySQL
+
+NEXTAUTH_SECRET → Secret para NextAuth.js
+
+NEXTAUTH_URL → URL de la app
+
+JWT_SECRET → Secret JWT
+
+🏗️ Estado del Proyecto
+
+✅ Landing page completa implementada
 ✅ Estructura base creada
-🚧 En desarrollo...
+🚧 Paneles y funcionalidades en desarrollo
 
-## 📄 Licencia
+📄 Licencia
 
 Este proyecto es privado y está destinado para uso interno del taller.
