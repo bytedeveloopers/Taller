@@ -214,50 +214,6 @@ const Nosotros: React.FC = () => {
             </div>
           </div>
         </div>
-
-        {/* Footer CTA */}
-        <div
-          className={`text-center mt-16 pt-12 border-t border-gray-700 transition-all duration-700 ease-out ${
-            isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
-          }`}
-          style={{
-            transitionDelay: isInView ? "1200ms" : "0ms",
-          }}
-        >
-          <h3 className="text-2xl md:text-3xl font-bold text-white mb-4">
-            ¿Listo para darle a tu vehículo el mejor cuidado?
-          </h3>
-          <p className="text-lg text-gray-300 mb-8 max-w-2xl mx-auto">
-            Nuestro equipo de expertos está listo para brindarte el servicio que tu auto merece.
-          </p>
-
-          <a
-            href="#agenda"
-            className={`inline-flex items-center justify-center px-12 py-4 bg-primary-400 hover:bg-primary-500 text-white font-bold text-lg rounded-xl transition-all duration-300 transform hover:scale-105 shadow-2xl hover:shadow-primary-400/40 focus:outline-none focus:ring-4 focus:ring-primary-400/50 group ${
-              isInView ? "animate-pulse" : ""
-            }`}
-            style={{
-              animationDuration: "3s",
-              animationIterationCount: "infinite",
-            }}
-            aria-label="Ir a la sección de agendar cita"
-          >
-            <span className="mr-3">Agendar Cita Ahora</span>
-            <svg
-              className="w-6 h-6 transition-transform duration-300 group-hover:translate-x-1"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-              />
-            </svg>
-          </a>
-        </div>
       </div>
 
       {/* Elementos decorativos */}
@@ -271,14 +227,3 @@ const Nosotros: React.FC = () => {
 };
 
 export default Nosotros;
-
-// Ejemplo de uso:
-// import Nosotros from '@/components/Nosotros';
-//
-// function HomePage() {
-//   return (
-//     <div>
-//       <Nosotros />
-//     </div>
-//   );
-// }

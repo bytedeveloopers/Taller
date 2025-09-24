@@ -267,7 +267,7 @@ const AgendarCita: React.FC = () => {
                     name="telefono"
                     value={formData.telefono}
                     onChange={handleInputChange}
-                    placeholder="+1 (234) 567-8900"
+                    placeholder="+502 1234 5678"
                     className={`w-full px-4 py-3 bg-gray-700 border ${
                       errors.telefono ? "border-red-500" : "border-gray-600"
                     } text-white placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-all duration-300`}
@@ -468,4 +468,3 @@ const AgendarCita: React.FC = () => {
 };
 
 export default AgendarCita;
-
