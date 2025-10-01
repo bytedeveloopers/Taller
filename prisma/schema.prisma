@@ -25,6 +25,8 @@ model User {
   assignedTasks Task[] @relation("TechnicianTasks")
   createdTasks  Task[] @relation("CreatedTasks")
   quotes        Quote[]
+  appointments  Appointment[] @relation("TechnicianAppointments")
+  inspectionPhotos InspectionPhoto[] @relation("TechnicianPhotos")
 
   @@map("users")
 }
@@ -42,6 +44,7 @@ model Customer {
   // Relaciones
   vehicles Vehicle[]
   quotes   Quote[]
+  appointments Appointment[]
 
   @@map("customers")
 }
@@ -65,6 +68,8 @@ model Vehicle {
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   tasks    Task[]
   quotes   Quote[]
+  appointments Appointment[]
+  inspectionPhotos InspectionPhoto[]
 
   @@map("vehicles")
 }
@@ -169,4 +174,54 @@ enum QuoteStatus {
   APPROVED
   REJECTED
   EXPIRED
+}
+
+// Modelo de Cita (Appointment)
+model Appointment {
+  id           String            @id @default(cuid())
+  scheduledAt  DateTime
+  estimatedDuration Int?         // en minutos
+  status       AppointmentStatus @default(SCHEDULED)
+  notes        String?           @db.Text
+  vehicleId    String
+  customerId   String
+  technicianId String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  // Relaciones
+  vehicle    Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  technician User?   @relation("TechnicianAppointments", fields: [technicianId], references: [id])
+
+  @@map("appointments")
+}
+
+// Modelo de Fotos de Inspección
+model InspectionPhoto {
+  id          String   @id @default(cuid())
+  nombre      String
+  ubicacion   String   // Parte del vehículo (ej: "Puerta derecha", "Capó")
+  observacion String   @db.Text // Descripción detallada del estado/daño
+  tieneDano   Boolean  @default(false)
+  imageUrl    String?  // URL de la imagen cuando se implemente upload
+  timestamp   DateTime @default(now())
+  vehicleId   String
+  technicianId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  vehicle    Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  technician User    @relation("TechnicianPhotos", fields: [technicianId], references: [id])
+
+  @@map("inspection_photos")
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
 }

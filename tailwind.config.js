@@ -93,5 +93,38 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    function ({ addUtilities }) {
+      addUtilities({
+        ".scrollbar-hide": {
+          /* IE and Edge */
+          "-ms-overflow-style": "none",
+          /* Firefox */
+          "scrollbar-width": "none",
+          /* Safari and Chrome */
+          "&::-webkit-scrollbar": {
+            display: "none",
+          },
+        },
+        ".scrollbar-thin": {
+          /* Firefox */
+          "scrollbar-width": "thin",
+          /* Safari and Chrome */
+          "&::-webkit-scrollbar": {
+            width: "4px",
+          },
+          "&::-webkit-scrollbar-track": {
+            background: "transparent",
+          },
+          "&::-webkit-scrollbar-thumb": {
+            background: "#475569",
+            "border-radius": "2px",
+          },
+          "&::-webkit-scrollbar-thumb:hover": {
+            background: "#64748b",
+          },
+        },
+      });
+    },
+  ],
 };
