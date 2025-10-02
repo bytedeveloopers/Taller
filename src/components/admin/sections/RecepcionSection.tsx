@@ -1,8 +1,10 @@
 "use client";
 
 import VehiculosEnTallerSection from "@/components/admin/sections/VehiculosEnTallerSection";
+import AsignarTecnicoModal from "@/components/ui/AsignarTecnicoModal";
 import CameraComponent from "@/components/ui/CameraComponent";
 import { useToast } from "@/components/ui/ToastNotification";
+import useAsignacionTecnico from "@/hooks/useAsignacionTecnico";
 import {
   CameraIcon,
   CheckCircleIcon,
@@ -72,6 +74,7 @@ export default function RecepcionSection({ stats }: Props) {
   const [checkInsPendientes, setCheckInsPendientes] = useState<CheckIn[]>([]);
   const [checkInsValidados, setCheckInsValidados] = useState<CheckIn[]>([]);
   const [selectedCheckIn, setSelectedCheckIn] = useState<CheckIn | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [showEvidencias, setShowEvidencias] = useState(false);
   const [showAgregarFoto, setShowAgregarFoto] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
@@ -100,315 +103,130 @@ export default function RecepcionSection({ stats }: Props) {
   });
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [vehiculoParaAsignar, setVehiculoParaAsignar] = useState<any>(null);
 
-  // Inicializar datos de ejemplo
+  // Hook para manejo de asignación de técnicos
+  const {
+    isModalOpen: isAsignacionModalOpen,
+    currentVehicle: currentVehicleForAssignment,
+    openModal: openAsignacionModal,
+    closeModal: closeAsignacionModal,
+    handleAsignacionSuccess,
+  } = useAsignacionTecnico((vehicleId, assignmentData) => {
+    // Callback cuando se asigna exitosamente un técnico
+    // Actualizar el estado local del vehículo con el técnico asignado
+    setCheckInsValidados((prev) =>
+      prev.map((vehiculo) =>
+        String(vehiculo.id) === String(vehicleId)
+          ? { ...vehiculo, tecnico: assignmentData.appointment.technicianName }
+          : vehiculo
+      )
+    );
+    setCheckInsPendientes((prev) =>
+      prev.map((vehiculo) =>
+        String(vehiculo.id) === String(vehicleId)
+          ? { ...vehiculo, tecnico: assignmentData.appointment.technicianName }
+          : vehiculo
+      )
+    );
+  });
+
+  // Cargar datos reales desde la API
   useEffect(() => {
-    const mockPendientes: CheckIn[] = [
-      {
-        id: 1,
-        codigoSeguimiento: "TLR-20241227-0930-ABC",
-        cliente: "Juan Pérez",
-        vehiculo: "Honda Civic 2018",
-        placa: "P123ABC",
-        tecnico: "Carlos López",
-        hora: "09:30",
-        telefono: "+506 8888-9999",
-        email: "juan.perez@email.com",
-        observaciones: "Cliente reporta ruido extraño en el motor",
-        firmaDigital: true,
-        evidencias: 8,
-        fotosInspeccion: [
-          {
-            id: "1-1",
-            nombre: "Frontal Completo",
-            ubicacion: "Parte frontal del vehículo",
-            observacion: "Sin daños aparentes",
-            timestamp: "09:35",
-            tecnico: "Carlos López",
-            tieneDano: false,
-          },
-          {
-            id: "1-2",
-            nombre: "Lateral Derecho",
-            ubicacion: "Costado derecho completo",
-            observacion: "Rayón profundo en puerta trasera derecha",
-            timestamp: "09:37",
-            tecnico: "Carlos López",
-            tieneDano: true,
-          },
-          {
-            id: "1-3",
-            nombre: "Trasero Completo",
-            ubicacion: "Parte trasera del vehículo",
-            observacion: "Golpe menor en paragolpes trasero lado derecho",
-            timestamp: "09:39",
-            tecnico: "Carlos López",
-            tieneDano: true,
-          },
-          {
-            id: "1-4",
-            nombre: "Lateral Izquierdo",
-            ubicacion: "Costado izquierdo completo",
-            observacion: "Estado excelente, sin daños",
-            timestamp: "09:41",
-            tecnico: "Carlos López",
-            tieneDano: false,
-          },
-          {
-            id: "1-5",
-            nombre: "Capó y Motor",
-            ubicacion: "Capó abierto y compartimento motor",
-            observacion: "Ligero desgaste en pintura del capó",
-            timestamp: "09:43",
-            tecnico: "Carlos López",
-            tieneDano: true,
-          },
-          {
-            id: "1-6",
-            nombre: "Interior General",
-            ubicacion: "Cabina y asientos",
-            observacion: "Interior limpio, asientos en buen estado",
-            timestamp: "09:45",
-            tecnico: "Carlos López",
-            tieneDano: false,
-          },
-          {
-            id: "1-7",
-            nombre: "Llantas Delanteras",
-            ubicacion: "Ruedas frontales",
-            observacion: "Llantas en buen estado, 70% vida útil",
-            timestamp: "09:47",
-            tecnico: "Carlos López",
-            tieneDano: false,
-          },
-          {
-            id: "1-8",
-            nombre: "Llantas Traseras",
-            ubicacion: "Ruedas posteriores",
-            observacion: "Desgaste normal, 65% vida útil",
-            timestamp: "09:49",
-            tecnico: "Carlos López",
-            tieneDano: false,
-          },
-        ],
-        datosVerificados: true,
-        estado: "pendiente",
-      },
-      {
-        id: 2,
-        codigoSeguimiento: "TLR-20241227-1015-DEF",
-        cliente: "María García",
-        vehiculo: "Toyota Corolla 2020",
-        placa: "P456DEF",
-        tecnico: "Ana Rodríguez",
-        hora: "10:15",
-        telefono: "+506 7777-8888",
-        email: "maria.garcia@email.com",
-        observaciones: "Mantenimiento preventivo programado",
-        firmaDigital: true,
-        evidencias: 6,
-        fotosInspeccion: [
-          {
-            id: "2-1",
-            nombre: "Vista Frontal",
-            ubicacion: "Frente completo",
-            observacion: "Excelente estado, sin daños",
-            timestamp: "10:20",
-            tecnico: "Ana Rodríguez",
-            tieneDano: false,
-          },
-          {
-            id: "2-2",
-            nombre: "Lateral Derecho",
-            ubicacion: "Costado derecho",
-            observacion: "Perfecto estado",
-            timestamp: "10:22",
-            tecnico: "Ana Rodríguez",
-            tieneDano: false,
-          },
-          {
-            id: "2-3",
-            nombre: "Vista Trasera",
-            ubicacion: "Parte posterior",
-            observacion: "Sin daños, excelente",
-            timestamp: "10:24",
-            tecnico: "Ana Rodríguez",
-            tieneDano: false,
-          },
-          {
-            id: "2-4",
-            nombre: "Lateral Izquierdo",
-            ubicacion: "Costado izquierdo",
-            observacion: "Estado impecable",
-            timestamp: "10:26",
-            tecnico: "Ana Rodríguez",
-            tieneDano: false,
-          },
-          {
-            id: "2-5",
-            nombre: "Interior",
-            ubicacion: "Cabina del vehículo",
-            observacion: "Interior como nuevo",
-            timestamp: "10:28",
-            tecnico: "Ana Rodríguez",
-            tieneDano: false,
-          },
-          {
-            id: "2-6",
-            nombre: "Llantas",
-            ubicacion: "Las cuatro ruedas",
-            observacion: "Llantas nuevas, excelente estado",
-            timestamp: "10:30",
-            tecnico: "Ana Rodríguez",
-            tieneDano: false,
-          },
-        ],
-        datosVerificados: false,
-        estado: "pendiente",
-      },
-      {
-        id: 3,
-        codigoSeguimiento: "TLR-20241227-1100-GHI",
-        cliente: "Pedro Martínez",
-        vehiculo: "Nissan Sentra 2019",
-        placa: "P789GHI",
-        tecnico: "Juan Pérez",
-        hora: "11:00",
-        telefono: "+506 6666-7777",
-        email: "pedro.martinez@email.com",
-        observaciones: "Problemas con el sistema de frenos",
-        firmaDigital: false,
-        evidencias: 4,
-        fotosInspeccion: [
-          {
-            id: "3-1",
-            nombre: "Frente del Vehículo",
-            ubicacion: "Parte frontal",
-            observacion: "Estado general bueno",
-            timestamp: "11:05",
-            tecnico: "Juan Pérez",
-            tieneDano: false,
-          },
-          {
-            id: "3-2",
-            nombre: "Capó",
-            ubicacion: "Capó del motor",
-            observacion: "Desgaste leve en pintura, varios puntos de oxidación menor",
-            timestamp: "11:07",
-            tecnico: "Juan Pérez",
-            tieneDano: true,
-          },
-          {
-            id: "3-3",
-            nombre: "Puerta Conductor",
-            ubicacion: "Puerta lateral izquierda",
-            observacion: "Pequeño rayón vertical cerca de la manija",
-            timestamp: "11:09",
-            tecnico: "Juan Pérez",
-            tieneDano: true,
-          },
-          {
-            id: "3-4",
-            nombre: "Ruedas Delanteras",
-            ubicacion: "Llantas frontales",
-            observacion: "Desgaste irregular en llanta derecha",
-            timestamp: "11:11",
-            tecnico: "Juan Pérez",
-            tieneDano: true,
-          },
-        ],
-        datosVerificados: true,
-        estado: "pendiente",
-      },
-    ];
+    let isMounted = true; // Para evitar actualizaciones de estado si el componente se desmonta
 
-    const mockValidados: CheckIn[] = [
-      {
-        id: 4,
-        codigoSeguimiento: "TLR-20241227-0845-CBA",
-        cliente: "Ana Jiménez",
-        vehiculo: "Hyundai Elantra 2021",
-        placa: "P321CBA",
-        tecnico: "Luis Mora",
-        hora: "08:45",
-        telefono: "+506 5555-6666",
-        email: "ana.jimenez@email.com",
-        observaciones: "Cambio de aceite y filtros",
-        firmaDigital: true,
-        evidencias: 7,
-        fotosInspeccion: [
-          {
-            id: "4-1",
-            nombre: "Vista General Frontal",
-            ubicacion: "Frente completo",
-            observacion: "Vehículo prácticamente nuevo",
-            timestamp: "08:50",
-            tecnico: "Luis Mora",
-            tieneDano: false,
-          },
-          {
-            id: "4-2",
-            nombre: "Lado Derecho",
-            ubicacion: "Lateral derecho completo",
-            observacion: "Sin daños, excelente",
-            timestamp: "08:52",
-            tecnico: "Luis Mora",
-            tieneDano: false,
-          },
-          {
-            id: "4-3",
-            nombre: "Parte Trasera",
-            ubicacion: "Vista posterior",
-            observacion: "Estado impecable",
-            timestamp: "08:54",
-            tecnico: "Luis Mora",
-            tieneDano: false,
-          },
-          {
-            id: "4-4",
-            nombre: "Lado Izquierdo",
-            ubicacion: "Lateral izquierdo completo",
-            observacion: "Perfecto estado",
-            timestamp: "08:56",
-            tecnico: "Luis Mora",
-            tieneDano: false,
-          },
-          {
-            id: "4-5",
-            nombre: "Interior Completo",
-            ubicacion: "Cabina y asientos",
-            observacion: "Interior como nuevo",
-            timestamp: "08:58",
-            tecnico: "Luis Mora",
-            tieneDano: false,
-          },
-          {
-            id: "4-6",
-            nombre: "Motor",
-            ubicacion: "Compartimento del motor",
-            observacion: "Motor limpio, bien mantenido",
-            timestamp: "09:00",
-            tecnico: "Luis Mora",
-            tieneDano: false,
-          },
-          {
-            id: "4-7",
-            nombre: "Ruedas y Llantas",
-            ubicacion: "Las cuatro ruedas",
-            observacion: "Llantas nuevas, rines impecables",
-            timestamp: "09:02",
-            tecnico: "Luis Mora",
-            tieneDano: false,
-          },
-        ],
-        datosVerificados: true,
-        estado: "validado",
-      },
-    ];
+    const cargarVehiculos = async () => {
+      try {
+        if (!isMounted) return;
+        setIsLoading(true);
 
-    setCheckInsPendientes(mockPendientes);
-    setCheckInsValidados(mockValidados);
-  }, []);
+        // Agregar un pequeño delay para asegurar que el servidor esté listo
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        console.log("Intentando cargar vehículos desde API...");
+        const response = await fetch("/api/recepcion/vehiculos");
+
+        console.log("Response status:", response.status);
+        console.log("Response ok:", response.ok);
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        console.log("Datos recibidos de la API:", result);
+
+        if (result.success && result.data) {
+          const vehiculos = result.data.map((vehiculo: any) => ({
+            id: vehiculo.id,
+            codigoSeguimiento: vehiculo.codigoSeguimiento,
+            cliente: vehiculo.cliente,
+            vehiculo: vehiculo.vehiculo,
+            placa: vehiculo.placa || "Sin placa",
+            tecnico: vehiculo.tecnico,
+            hora: new Date(vehiculo.fechaIngreso).toLocaleTimeString("es-GT", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            telefono: vehiculo.telefono,
+            email: vehiculo.email,
+            observaciones: "Vehículo registrado en el sistema",
+            firmaDigital: true,
+            evidencias: vehiculo.evidencias,
+            fotosInspeccion: vehiculo.fotosInspeccion || [],
+            datosVerificados: true,
+            estado:
+              vehiculo.estado === "RECEIVED"
+                ? "pendiente"
+                : vehiculo.estado === "IN_PROGRESS"
+                ? "validado"
+                : "pendiente",
+          }));
+
+          console.log("Vehículos procesados:", vehiculos);
+
+          // Separar por estado
+          const pendientes = vehiculos.filter((v: any) => v.estado === "pendiente");
+          const validados = vehiculos.filter((v: any) => v.estado === "validado");
+
+          if (isMounted) {
+            setCheckInsPendientes(pendientes);
+            setCheckInsValidados(validados);
+          }
+        } else {
+          console.log("No hay datos o la respuesta no fue exitosa:", result);
+          if (isMounted) {
+            setCheckInsPendientes([]);
+            setCheckInsValidados([]);
+          }
+        }
+      } catch (error) {
+        console.error("Error completo al cargar vehículos:", error);
+        console.error("Error details:", error instanceof Error ? error.message : error);
+
+        // Mostrar toast de error solo en desarrollo
+        if (process.env.NODE_ENV === "development") {
+          console.warn("API de recepción no disponible, usando datos vacíos");
+        }
+
+        // En caso de error, usar datos de ejemplo para desarrollo
+        if (isMounted) {
+          setCheckInsPendientes([]);
+          setCheckInsValidados([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    cargarVehiculos();
+
+    // Cleanup function para evitar actualizaciones de estado en componentes desmontados
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Solo ejecutar una vez al montar el componente
 
   const validarCheckIn = async (checkInId: number) => {
     setLoading(true);
@@ -490,66 +308,103 @@ export default function RecepcionSection({ stats }: Props) {
   };
 
   const procesarOTManual = async () => {
-    if (!nuevaOT.cliente.trim() || !nuevaOT.vehiculo.trim() || !nuevaOT.placa.trim()) {
-      showWarning("Campos Requeridos", "Por favor complete al menos cliente, vehículo y placa");
+    if (
+      !nuevaOT.cliente.trim() ||
+      !nuevaOT.marca.trim() ||
+      !nuevaOT.modelo.trim() ||
+      !nuevaOT.año.trim()
+    ) {
+      showWarning("Campos Requeridos", "Por favor complete cliente, marca, modelo y año");
       return;
     }
 
     setLoading(true);
     try {
-      // Simular creación de OT
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Generar código de seguimiento
-      const codigoSeguimiento = generarCodigoSeguimiento();
-
-      // Crear nuevo check-in directamente validado
-      const nuevaOTCompleta: CheckIn = {
-        id: Date.now(), // ID temporal
-        codigoSeguimiento,
-        cliente: nuevaOT.cliente,
-        vehiculo: `${nuevaOT.marca} ${nuevaOT.modelo} ${nuevaOT.año}`,
-        placa: nuevaOT.placa,
-        tecnico: "Asignación Pendiente",
-        hora: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
-        telefono: nuevaOT.telefono,
-        email: nuevaOT.email,
-        observaciones: nuevaOT.observaciones,
-        firmaDigital: false, // OT manual no requiere firma inicial
-        evidencias: 0, // Sin fotos iniciales
-        fotosInspeccion: [],
-        datosVerificados: true, // Los datos se ingresan manualmente
-        estado: "validado", // Directamente validado
-      };
-
-      // Agregar a validados
-      setCheckInsValidados((prev) => [nuevaOTCompleta, ...prev]);
-
-      // Limpiar formulario
-      setNuevaOT({
-        cliente: "",
-        telefono: "",
-        email: "",
-        vehiculo: "",
-        marca: "",
-        modelo: "",
-        año: "",
-        placa: "",
-        color: "",
-        kilometraje: "",
-        observaciones: "",
-        servicios: [],
-        prioridad: "media",
+      // Crear vehículo a través de la API
+      const response = await fetch("/api/recepcion/vehiculos", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          cliente: nuevaOT.cliente,
+          telefono: nuevaOT.telefono,
+          email: nuevaOT.email,
+          marca: nuevaOT.marca,
+          modelo: nuevaOT.modelo,
+          año: nuevaOT.año,
+          placa: nuevaOT.placa,
+          color: nuevaOT.color,
+          kilometraje: nuevaOT.kilometraje,
+          observaciones: nuevaOT.observaciones,
+        }),
       });
 
-      setShowCrearOTModal(false);
+      const result = await response.json();
 
-      showSuccess(
-        "OT Manual Creada",
-        `Orden de trabajo creada para ${nuevaOT.cliente}. Código: ${codigoSeguimiento}`
-      );
+      if (result.success) {
+        // Actualizar estado local con el nuevo vehículo
+        const nuevoVehiculo: CheckIn = {
+          id: result.data.id,
+          codigoSeguimiento: result.data.codigoSeguimiento,
+          cliente: result.data.cliente,
+          vehiculo: result.data.vehiculo,
+          placa: result.data.placa,
+          tecnico: "Asignación Pendiente",
+          hora: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
+          telefono: nuevaOT.telefono,
+          email: nuevaOT.email,
+          observaciones: nuevaOT.observaciones,
+          firmaDigital: false,
+          evidencias: 0,
+          fotosInspeccion: [],
+          datosVerificados: true,
+          estado: "validado",
+        };
+
+        setCheckInsValidados((prev) => [nuevoVehiculo, ...prev]);
+
+        // Limpiar formulario
+        setNuevaOT({
+          cliente: "",
+          telefono: "",
+          email: "",
+          vehiculo: "",
+          marca: "",
+          modelo: "",
+          año: "",
+          placa: "",
+          color: "",
+          kilometraje: "",
+          observaciones: "",
+          servicios: [],
+          prioridad: "media",
+        });
+
+        setShowCrearOTModal(false);
+
+        showSuccess(
+          "OT Creada",
+          `Vehículo registrado exitosamente. Código: ${result.data.codigoSeguimiento}`
+        );
+
+        // Abrir modal de asignación de técnico automáticamente
+        setTimeout(() => {
+          openAsignacionModal({
+            id: result.data.id,
+            cliente: result.data.cliente,
+            vehiculo: result.data.vehiculo,
+            placa: result.data.placa || "Sin placa",
+            codigoSeguimiento: result.data.codigoSeguimiento,
+            tecnicoActual: null,
+          });
+        }, 500);
+      } else {
+        showError("Error", result.error || "No se pudo registrar el vehículo");
+      }
     } catch (error) {
-      showError("Error", "No se pudo crear la orden de trabajo");
+      console.error("Error al crear vehículo:", error);
+      showError("Error", "No se pudo registrar el vehículo");
     } finally {
       setLoading(false);
     }
@@ -819,6 +674,22 @@ export default function RecepcionSection({ stats }: Props) {
   if (showVehiculosEnTaller) {
     return (
       <VehiculosEnTallerSection stats={stats} onClose={() => setShowVehiculosEnTaller(false)} />
+    );
+  }
+
+  // Mostrar estado de carga
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
+          <div className="flex items-center justify-center">
+            <div className="flex items-center space-x-2">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+              <span className="text-white">Cargando vehículos...</span>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -1836,6 +1707,23 @@ export default function RecepcionSection({ stats }: Props) {
         onCapture={handleCameraCapture}
         title={`Foto: ${nuevaFoto.ubicacion}`}
       />
+
+      {/* Modal de Asignación de Técnico */}
+      {currentVehicleForAssignment && (
+        <AsignarTecnicoModal
+          isOpen={isAsignacionModalOpen}
+          onClose={closeAsignacionModal}
+          vehicleId={currentVehicleForAssignment.id}
+          vehicleInfo={{
+            cliente: currentVehicleForAssignment.cliente,
+            vehiculo: currentVehicleForAssignment.vehiculo,
+            placa: currentVehicleForAssignment.placa,
+            codigoSeguimiento: currentVehicleForAssignment.codigoSeguimiento,
+          }}
+          tecnicoActual={currentVehicleForAssignment.tecnicoActual}
+          onSuccess={handleAsignacionSuccess}
+        />
+      )}
     </div>
   );
 }

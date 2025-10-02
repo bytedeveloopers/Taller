@@ -1,229 +1,389 @@
 "use client";
 
-import {
-  ChartBarIcon,
-  ClipboardDocumentCheckIcon,
-  ClockIcon,
-  UserIcon,
-  WrenchScrewdriverIcon,
-} from "@heroicons/react/24/outline";
+import AgendaTecnico from "@/components/admin/tecnicos/AgendaTecnico";
+import Ficha360Tecnico from "@/components/admin/tecnicos/Ficha360Tecnico";
+import FormularioTecnico from "@/components/admin/tecnicos/FormularioTecnico";
+import ListadoTecnicos from "@/components/admin/tecnicos/ListadoTecnicos";
+import { useToast } from "@/components/ui/ToastNotification";
+import { Technician } from "@/types";
+import { PlusIcon, UserGroupIcon } from "@heroicons/react/24/outline";
+import { useEffect, useRef, useState } from "react";
+
+interface TechnicianStats {
+  totalTecnicos: number;
+  tecnicosActivos: number;
+  cargaPromedio: number;
+  disponibles: number;
+}
+
+interface DashboardStats {
+  totalCitas: number;
+  citasPendientes: number;
+  citasCompletadas: number;
+  citasEnProceso: number;
+  citasHoy: number;
+  citasEstaSemana: number;
+  totalClientes: number;
+  totalVehiculos: number;
+  vehiculosActivos: number;
+  proximoMantenimiento: number;
+  enTaller: number;
+  totalCotizaciones: number;
+  cotizacionesAprobadas: number;
+  ingresos: {
+    total: number;
+    pendiente: number;
+  };
+  recentAppointments: any[];
+  tasaCompletado: number;
+  satisfaccionCliente: number;
+}
 
 interface Props {
-  stats: any;
+  stats: DashboardStats;
 }
 
 export default function TecnicosSection({ stats }: Props) {
-  const tecnicos = [
-    { id: 1, name: "Juan Pérez", specialty: "Motor", carga: 85, activas: 4, completadas: 28 },
-    {
-      id: 2,
-      name: "María García",
-      specialty: "Transmisión",
-      carga: 92,
-      activas: 5,
-      completadas: 35,
-    },
-    {
-      id: 3,
-      name: "Carlos López",
-      specialty: "Electricidad",
-      carga: 78,
-      activas: 3,
-      completadas: 22,
-    },
-    { id: 4, name: "Ana Rodríguez", specialty: "Frenos", carga: 88, activas: 4, completadas: 31 },
-  ];
+  const { showSuccess, showError } = useToast();
 
-  return (
-    <div className="space-y-6">
-      {/* Estadísticas de técnicos */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Total Técnicos</p>
-              <p className="text-3xl font-bold text-white">{tecnicos.length}</p>
-            </div>
-            <UserIcon className="h-12 w-12 text-blue-500" />
-          </div>
-        </div>
+  // Crear referencia estable para evitar recreación en useCallback
+  const showErrorRef = useRef(showError);
+  showErrorRef.current = showError;
 
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Activos Hoy</p>
-              <p className="text-3xl font-bold text-white">{tecnicos.length}</p>
-            </div>
-            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-          </div>
-        </div>
+  // Estados principales
+  const [tecnicos, setTecnicos] = useState<Technician[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTecnico, setSelectedTecnico] = useState<Technician | null>(null);
+  const [tecnicosStats, setTecnicosStats] = useState<TechnicianStats>({
+    totalTecnicos: 0,
+    tecnicosActivos: 0,
+    cargaPromedio: 0,
+    disponibles: 0,
+  });
 
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Tareas Activas</p>
-              <p className="text-3xl font-bold text-white">
-                {tecnicos.reduce((sum, t) => sum + t.activas, 0)}
-              </p>
-            </div>
-            <WrenchScrewdriverIcon className="h-12 w-12 text-yellow-500" />
-          </div>
-        </div>
+  // Estados de vista
+  const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const [mostrarFicha360, setMostrarFicha360] = useState(false);
+  const [mostrarAgenda, setMostrarAgenda] = useState(false);
 
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Eficiencia Promedio</p>
-              <p className="text-3xl font-bold text-white">
-                {Math.round(tecnicos.reduce((sum, t) => sum + t.carga, 0) / tecnicos.length)}%
-              </p>
-            </div>
-            <ChartBarIcon className="h-12 w-12 text-green-500" />
-          </div>
-        </div>
-      </div>
+  // Estados de búsqueda y filtros
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [filtroHabilidades, setFiltroHabilidades] = useState("");
+  const [filtroCarga, setFiltroCarga] = useState("todos");
 
-      {/* Lista de técnicos */}
-      <div className="bg-secondary-800 rounded-xl border border-secondary-700">
-        <div className="p-6 border-b border-secondary-700">
-          <h3 className="text-xl font-semibold text-white">Lista de Técnicos</h3>
-        </div>
+  // Referencia para controlar si hay una carga en progreso
+  const isLoadingRef = useRef(false);
 
-        <div className="p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {tecnicos.map((tecnico) => (
-              <div
-                key={tecnico.id}
-                className="p-6 bg-secondary-700/50 rounded-lg hover:bg-secondary-700 transition-colors"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 bg-primary-600 rounded-full flex items-center justify-center">
-                      <span className="text-white font-bold">{tecnico.name.charAt(0)}</span>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-white">{tecnico.name}</h4>
-                      <p className="text-sm text-gray-400">{tecnico.specialty}</p>
-                    </div>
-                  </div>
-                  <div
-                    className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      tecnico.carga > 90
-                        ? "bg-red-500/20 text-red-400"
-                        : tecnico.carga > 80
-                        ? "bg-yellow-500/20 text-yellow-400"
-                        : "bg-green-500/20 text-green-400"
-                    }`}
-                  >
-                    {tecnico.carga}% Carga
-                  </div>
-                </div>
+  // Effect para cargar datos con debounce y control estricto de llamadas
+  useEffect(() => {
+    let isMounted = true;
 
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Tareas Activas</span>
-                    <span className="text-white font-medium">{tecnico.activas}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Completadas</span>
-                    <span className="text-white font-medium">{tecnico.completadas}</span>
-                  </div>
+    // Si ya hay una carga en progreso, cancelar esta
+    if (isLoadingRef.current) {
+      return;
+    }
 
-                  {/* Barra de carga */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs text-gray-400">
-                      <span>Carga Laboral</span>
-                      <span>{tecnico.carga}%</span>
-                    </div>
-                    <div className="w-full bg-secondary-600 rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full transition-all duration-300 ${
-                          tecnico.carga > 90
-                            ? "bg-red-500"
-                            : tecnico.carga > 80
-                            ? "bg-yellow-500"
-                            : "bg-green-500"
-                        }`}
-                        style={{ width: `${tecnico.carga}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
+    const timeoutId = setTimeout(async () => {
+      // Doble check antes de empezar la carga
+      if (isLoadingRef.current || !isMounted) {
+        return;
+      }
+
+      isLoadingRef.current = true;
+
+      try {
+        setLoading(true);
+
+        const params = new URLSearchParams({
+          search: busqueda,
+          estado: filtroEstado,
+          habilidades: filtroHabilidades,
+          carga: filtroCarga,
+        });
+
+        // Check if we're in the browser before making API calls
+        if (typeof window === "undefined") {
+          return;
+        }
+
+        const [tecnicosResponse, statsResponse] = await Promise.all([
+          fetch(`/api/tecnicos?${params}`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }),
+          fetch("/api/tecnicos/stats", {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }),
+        ]);
+
+        if (!isMounted) return;
+
+        // Check if responses are ok
+        if (!tecnicosResponse.ok || !statsResponse.ok) {
+          throw new Error(
+            `HTTP error! tecnicos: ${tecnicosResponse.status}, stats: ${statsResponse.status}`
+          );
+        }
+
+        const tecnicosResult = await tecnicosResponse.json();
+        const statsResult = await statsResponse.json();
+
+        if (isMounted) {
+          if (tecnicosResult.success) {
+            setTecnicos(tecnicosResult.data || []);
+          } else {
+            console.error("Error en respuesta de técnicos:", tecnicosResult);
+            setTecnicos([]);
+          }
+
+          if (statsResult.success) {
+            setTecnicosStats(statsResult.data);
+          } else {
+            console.error("Error en respuesta de estadísticas:", statsResult);
+          }
+        }
+      } catch (error) {
+        console.error("Error cargando datos:", error);
+        if (isMounted) {
+          // Set empty state instead of showing error immediately
+          setTecnicos([]);
+          // Only show error for real network issues, not initial load
+          if (
+            busqueda ||
+            filtroEstado !== "todos" ||
+            filtroHabilidades ||
+            filtroCarga !== "todos"
+          ) {
+            showErrorRef.current(
+              "Error",
+              error instanceof Error ? error.message : "Error al cargar los datos"
+            );
+          }
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+          isLoadingRef.current = false;
+        }
+      }
+    }, 500); // Debounce de 500ms
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+      isLoadingRef.current = false;
+    };
+  }, [busqueda, filtroEstado, filtroHabilidades, filtroCarga]);
+
+  // Handlers
+  const handleCrearTecnico = () => {
+    setSelectedTecnico(null);
+    setMostrarFormulario(true);
+  };
+
+  const handleEditarTecnico = (tecnico: Technician) => {
+    setSelectedTecnico(tecnico);
+    setMostrarFormulario(true);
+  };
+
+  const handleVerFicha360 = (tecnico: Technician) => {
+    setSelectedTecnico(tecnico);
+    setMostrarFicha360(true);
+  };
+
+  const handleVerAgenda = (tecnico: Technician) => {
+    setSelectedTecnico(tecnico);
+    setMostrarAgenda(true);
+  };
+
+  const handleGuardarTecnico = async (tecnicoData: any) => {
+    try {
+      const url = selectedTecnico ? `/api/tecnicos/${selectedTecnico.id}` : "/api/tecnicos";
+      const method = selectedTecnico ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tecnicoData),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showSuccess(
+          "Éxito",
+          selectedTecnico ? "Técnico actualizado correctamente" : "Técnico creado correctamente"
+        );
+        setMostrarFormulario(false);
+        // Recargar datos
+        window.location.reload();
+      } else {
+        showError("Error", result.error || "Error al guardar técnico");
+      }
+    } catch (error) {
+      console.error("Error guardando técnico:", error);
+      showError("Error", "Error de conexión al guardar técnico");
+    }
+  };
+
+  const handleActivarDesactivarTecnico = async (tecnicoId: string, activo: boolean) => {
+    const accion = activo ? "activar" : "desactivar";
+
+    if (!confirm(`¿Estás seguro de que deseas ${accion} este técnico?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/tecnicos/${tecnicoId}/toggle-status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: activo }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showSuccess("Éxito", `Técnico ${activo ? "activado" : "desactivado"} correctamente`);
+        // Recargar datos
+        window.location.reload();
+      } else {
+        showError("Error", result.error || `Error al ${accion} técnico`);
+      }
+    } catch (error) {
+      console.error(`Error ${accion}ndo técnico:`, error);
+      showError("Error", `Error de conexión al ${accion} técnico`);
+    }
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="animate-pulse">
+          <div className="h-8 bg-secondary-600 rounded w-1/4 mb-6"></div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-secondary-700 p-4 rounded-xl border border-secondary-600">
+                <div className="h-4 bg-secondary-600 rounded w-3/4 mb-2"></div>
+                <div className="h-8 bg-secondary-600 rounded w-1/2"></div>
               </div>
             ))}
           </div>
+          <div className="bg-secondary-700 rounded-xl border border-secondary-600 p-6">
+            <div className="h-64 bg-secondary-600 rounded"></div>
+          </div>
         </div>
       </div>
+    );
+  }
 
-      {/* Asignación de tareas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-            <ClipboardDocumentCheckIcon className="h-6 w-6 mr-2 text-blue-400" />
-            Asignación de Tareas
-          </h3>
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="bg-blue-500/20 p-2 rounded-lg">
+            <UserGroupIcon className="h-6 w-6 text-blue-400" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white">Técnicos</h1>
+            <p className="text-gray-400">Gestión del equipo técnico</p>
+          </div>
+        </div>
+        <button
+          onClick={handleCrearTecnico}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+        >
+          <PlusIcon className="h-5 w-5" />
+          <span>Nuevo Técnico</span>
+        </button>
+      </div>
 
-          <div className="space-y-4">
-            <div className="p-4 bg-secondary-700/50 rounded-lg">
-              <div className="flex justify-between items-center mb-2">
-                <h4 className="font-medium text-white">Reparación Motor - Toyota Corolla</h4>
-                <span className="text-xs text-blue-400">Asignada</span>
-              </div>
-              <p className="text-sm text-gray-400 mb-2">Asignado a: Juan Pérez</p>
-              <div className="flex items-center space-x-2">
-                <ClockIcon className="h-4 w-4 text-gray-400" />
-                <span className="text-xs text-gray-400">Estimado: 4 horas</span>
-              </div>
-            </div>
-
-            <div className="p-4 bg-secondary-700/50 rounded-lg">
-              <div className="flex justify-between items-center mb-2">
-                <h4 className="font-medium text-white">Cambio Transmisión - Honda Civic</h4>
-                <span className="text-xs text-yellow-400">En Proceso</span>
-              </div>
-              <p className="text-sm text-gray-400 mb-2">Asignado a: María García</p>
-              <div className="flex items-center space-x-2">
-                <ClockIcon className="h-4 w-4 text-gray-400" />
-                <span className="text-xs text-gray-400">Progreso: 60%</span>
-              </div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-secondary-700 p-4 rounded-xl border border-secondary-600">
+          <div className="flex items-center">
+            <UserGroupIcon className="w-8 h-8 text-blue-400 mr-3" />
+            <div>
+              <p className="text-sm text-gray-400">Total Técnicos</p>
+              <p className="text-2xl font-bold text-white">{tecnicosStats.totalTecnicos}</p>
             </div>
           </div>
         </div>
 
-        {/* Rendimiento */}
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-            <ChartBarIcon className="h-6 w-6 mr-2 text-green-400" />
-            Rendimiento del Equipo
-          </h3>
-
-          <div className="space-y-4">
-            <div className="p-4 bg-green-500/10 rounded-lg border border-green-500/20">
-              <h4 className="font-medium text-green-300 mb-2">Productividad</h4>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-300">Tareas completadas hoy</span>
-                <span className="text-green-400 font-bold">12</span>
-              </div>
+        <div className="bg-secondary-700 p-4 rounded-xl border border-secondary-600">
+          <div className="flex items-center">
+            <UserGroupIcon className="w-8 h-8 text-green-400 mr-3" />
+            <div>
+              <p className="text-sm text-gray-400">Activos</p>
+              <p className="text-2xl font-bold text-white">{tecnicosStats.tecnicosActivos}</p>
             </div>
+          </div>
+        </div>
 
-            <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
-              <h4 className="font-medium text-blue-300 mb-2">Calidad</h4>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-300">Satisfacción promedio</span>
-                <span className="text-blue-400 font-bold">4.8/5</span>
-              </div>
+        <div className="bg-secondary-700 p-4 rounded-xl border border-secondary-600">
+          <div className="flex items-center">
+            <UserGroupIcon className="w-8 h-8 text-yellow-400 mr-3" />
+            <div>
+              <p className="text-sm text-gray-400">Carga Promedio</p>
+              <p className="text-2xl font-bold text-white">{tecnicosStats.cargaPromedio}%</p>
             </div>
+          </div>
+        </div>
 
-            <div className="p-4 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
-              <h4 className="font-medium text-yellow-300 mb-2">Tiempo</h4>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-300">Tiempo promedio/tarea</span>
-                <span className="text-yellow-400 font-bold">2.5h</span>
-              </div>
+        <div className="bg-secondary-700 p-4 rounded-xl border border-secondary-600">
+          <div className="flex items-center">
+            <UserGroupIcon className="w-8 h-8 text-blue-400 mr-3" />
+            <div>
+              <p className="text-sm text-gray-400">Disponibles</p>
+              <p className="text-2xl font-bold text-white">{tecnicosStats.disponibles}</p>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Main Content */}
+      <div className="bg-secondary-700 rounded-xl border border-secondary-600">
+        <ListadoTecnicos
+          tecnicos={tecnicos}
+          loading={loading}
+          busqueda={busqueda}
+          setBusqueda={setBusqueda}
+          filtroEstado={filtroEstado}
+          setFiltroEstado={setFiltroEstado}
+          filtroHabilidades={filtroHabilidades}
+          setFiltroHabilidades={setFiltroHabilidades}
+          filtroCarga={filtroCarga}
+          setFiltroCarga={setFiltroCarga}
+          onEditar={handleEditarTecnico}
+          onVerFicha360={handleVerFicha360}
+          onVerAgenda={handleVerAgenda}
+          onToggleEstado={handleActivarDesactivarTecnico}
+        />
+      </div>
+
+      {/* Modales */}
+      {mostrarFormulario && (
+        <FormularioTecnico
+          tecnico={selectedTecnico}
+          onGuardar={handleGuardarTecnico}
+          onCancelar={() => setMostrarFormulario(false)}
+        />
+      )}
+
+      {mostrarFicha360 && selectedTecnico && (
+        <Ficha360Tecnico tecnico={selectedTecnico} onCerrar={() => setMostrarFicha360(false)} />
+      )}
+
+      {mostrarAgenda && selectedTecnico && (
+        <AgendaTecnico tecnico={selectedTecnico} onCerrar={() => setMostrarAgenda(false)} />
+      )}
     </div>
   );
 }

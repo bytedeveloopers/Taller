@@ -238,7 +238,36 @@ export default function AdminDashboard() {
         {/* Contenido de la sección - Con scroll independiente */}
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="p-6">
-            <CurrentComponent stats={stats} />
+            <CurrentComponent
+              stats={
+                stats || {
+                  totalCitas: 0,
+                  citasPendientes: 0,
+                  citasCompletadas: 0,
+                  citasEnProceso: 0,
+                  citasHoy: 0,
+                  citasEstaSemana: 0,
+                  totalClientes: 0,
+                  totalVehiculos: 0,
+                  vehiculosActivos: 0,
+                  proximoMantenimiento: 0,
+                  enTaller: 0,
+                  totalCotizaciones: 0,
+                  cotizacionesAprobadas: 0,
+                  ingresos: { total: 0, pendiente: 0 },
+                  recentAppointments: [],
+                  tasaCompletado: 0,
+                  satisfaccionCliente: 0,
+                  // Propiedades adicionales para OrdenesTrabajoSection
+                  total: 0,
+                  recibidos: 0,
+                  enProceso: 0,
+                  esperandoRepuestos: 0,
+                  completados: 0,
+                  entregados: 0,
+                }
+              }
+            />
           </div>
         </div>
       </div>

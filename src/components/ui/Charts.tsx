@@ -9,8 +9,29 @@ interface SimpleChartProps {
 }
 
 export const SimpleChart = ({ data, title, type = "bar" }: SimpleChartProps) => {
-  const maxValue = useMemo(() => Math.max(...data.map((d) => d.value)), [data]);
-  const total = useMemo(() => data.reduce((sum, d) => sum + d.value, 0), [data]);
+  // Validar datos de entrada
+  const validData = data.filter((d) => d && typeof d.value === "number" && !isNaN(d.value));
+
+  const maxValue = useMemo(() => {
+    if (validData.length === 0) return 0;
+    return Math.max(...validData.map((d) => d.value));
+  }, [validData]);
+
+  const total = useMemo(() => validData.reduce((sum, d) => sum + d.value, 0), [validData]);
+
+  // Mostrar estado vacío si no hay datos válidos
+  if (validData.length === 0 || total === 0) {
+    return (
+      <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
+        <h3 className="text-lg font-semibold text-white mb-4">{title}</h3>
+        <div className="flex items-center justify-center h-32">
+          <div className="text-center">
+            <div className="text-gray-400 text-sm">No hay datos disponibles</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (type === "donut") {
     return (
@@ -28,10 +49,10 @@ export const SimpleChart = ({ data, title, type = "bar" }: SimpleChartProps) => 
                 stroke="#374151"
                 strokeWidth="3"
               />
-              {data.map((item, index) => {
+              {validData.map((item, index) => {
                 const percentage = (item.value / total) * 100;
                 const strokeDasharray = `${percentage} ${100 - percentage}`;
-                const strokeDashoffset = data
+                const strokeDashoffset = validData
                   .slice(0, index)
                   .reduce((sum, d) => sum + (d.value / total) * 100, 0);
 
@@ -60,7 +81,7 @@ export const SimpleChart = ({ data, title, type = "bar" }: SimpleChartProps) => 
           </div>
         </div>
         <div className="mt-4 space-y-2">
-          {data.map((item) => (
+          {validData.map((item) => (
             <div key={item.label} className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <div
@@ -81,7 +102,7 @@ export const SimpleChart = ({ data, title, type = "bar" }: SimpleChartProps) => 
     <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
       <h3 className="text-lg font-semibold text-white mb-4">{title}</h3>
       <div className="space-y-4">
-        {data.map((item) => (
+        {validData.map((item) => (
           <div key={item.label} className="relative">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-300">{item.label}</span>

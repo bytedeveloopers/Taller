@@ -27,6 +27,8 @@ model User {
   quotes        Quote[]
   appointments  Appointment[] @relation("TechnicianAppointments")
   inspectionPhotos InspectionPhoto[] @relation("TechnicianPhotos")
+  workflowUpdates WorkflowStatus[] @relation("TechnicianWorkflow")
+  clientMerges ClientMergeLog[] @relation("UserMerges")
 
   @@map("users")
 }
@@ -38,15 +40,43 @@ model Customer {
   email       String?
   phone       String
   address     String?
+  altPhone    String?  // Teléfono alternativo
+  contactPreference String @default("PHONE") // PHONE, WHATSAPP, EMAIL
+  labels      String?  // VIP,FLOTA,REFERIDO (separado por comas)
+  notes       String?  @db.Text // Notas internas
+  pickupPoints String? @db.Text // Puntos de recogida habituales
+  consents    Json?    // Consentimientos y preferencias
+  isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  lastVisit   DateTime?
 
   // Relaciones
   vehicles Vehicle[]
   quotes   Quote[]
   appointments Appointment[]
+  mergeHistory ClientMergeLog[] @relation("MergedClient")
+  mergeSource  ClientMergeLog[] @relation("SourceClient")
 
   @@map("customers")
+}
+
+// Modelo para auditoría de fusiones de clientes
+model ClientMergeLog {
+  id              String   @id @default(cuid())
+  sourceClientId  String   // Cliente que se fusionó (eliminado)
+  targetClientId  String   // Cliente que recibió la información
+  mergedData      Json     // Datos que se transfirieron
+  mergedBy        String   // Usuario que realizó la fusión
+  reason          String?  // Motivo de la fusión
+  timestamp       DateTime @default(now())
+
+  // Relaciones
+  sourceClient    Customer @relation("SourceClient", fields: [sourceClientId], references: [id])
+  targetClient    Customer @relation("MergedClient", fields: [targetClientId], references: [id])
+  mergedByUser    User     @relation("UserMerges", fields: [mergedBy], references: [id])
+
+  @@map("client_merge_logs")
 }
 
 // Modelo de Vehículo
@@ -56,11 +86,19 @@ model Vehicle {
   brand        String
   model        String
   year         Int
-  licensePlate String?
+  licensePlate String?       // Placa del vehículo
+  vin          String?       // VIN del vehículo
   color        String?
-  mileage      Int?
+  mileage      Int?          // Kilometraje actual (renombrado de mileage)
+  fuelType     String?       // gasolina/diésel/híbrido/EV
+  transmission String?       // manual/automática
+  nickname     String?       // Apodo opcional
+  notes        String?       @db.Text // Notas del vehículo
+  nextServiceAtDate DateTime? // Próxima revisión por fecha
+  nextServiceAtKm   Int?      // Próxima revisión por kilometraje
   customerId   String
   status       VehicleStatus @default(RECEIVED)
+  isActive     Boolean       @default(true) // Activo/inactivo
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -70,6 +108,7 @@ model Vehicle {
   quotes   Quote[]
   appointments Appointment[]
   inspectionPhotos InspectionPhoto[]
+  workflowHistory WorkflowStatus[]
 
   @@map("vehicles")
 }
@@ -152,6 +191,16 @@ enum VehicleStatus {
   WAITING_PARTS
   COMPLETED
   DELIVERED
+  // Nuevos estados del flujo de trabajo
+  RECEPCION
+  INGRESO
+  DIAGNOSTICO
+  COTIZACION_APROBACION
+  PROCESO_DESARME
+  ESPERA
+  PROCESO_ARMADO
+  PRUEBA_CALIDAD
+  ENTREGA
 }
 
 enum TaskStatus {
@@ -225,3 +274,58 @@ enum AppointmentStatus {
   CANCELLED
   NO_SHOW
 }
+
+// Modelo de Historial de Estados del Flujo de Trabajo
+model WorkflowStatus {
+  id           String        @id @default(cuid())
+  vehicleId    String
+  status       VehicleStatus
+  technicianId String?
+  notes        String?       @db.Text
+  timestamp    DateTime      @default(now())
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Relaciones
+  vehicle    Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  technician User?   @relation("TechnicianWorkflow", fields: [technicianId], references: [id])
+
+  @@map("workflow_status")
+}
+
+// Modelo de Recordatorios
+model Reminder {
+  id               String   @id @default(cuid())
+  ordenTrabajoId   String
+  fechaRecordatorio DateTime
+  mensaje          String   @db.Text
+  tipo             String   @default("ASIGNACION") // ASIGNACION, SEGUIMIENTO, ENTREGA
+  activo           Boolean  @default(true)
+  completado       Boolean  @default(false)
+  fechaCompletado  DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("recordatorios")
+}
+
+// Modelo de Media para documentos y archivos
+model Media {
+  id          String   @id @default(cuid())
+  filename    String   // Nombre original del archivo
+  url         String   // URL o path del archivo
+  mimeType    String   // Tipo MIME
+  size        Int      // Tamaño en bytes
+  entityType  String   // "vehicle", "customer", "appointment", etc.
+  entityId    String   // ID de la entidad relacionada
+  category    String?  // "circulacion", "seguro", "foto", etc.
+  description String?  // Descripción opcional
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones condicionales - se manejan en el código
+
+  @@map("media")
+}
+
+// El modelo Reminder ya está definido arriba

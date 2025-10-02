@@ -1,242 +1,211 @@
 "use client";
 
-import {
-  CheckCircleIcon,
-  ClockIcon,
-  CurrencyDollarIcon,
-  DocumentTextIcon,
-  PaperAirplaneIcon,
-  PlusIcon,
-} from "@heroicons/react/24/outline";
+import { Quote, QuoteStats } from "@/types";
+import { DocumentTextIcon, LinkIcon, PlusIcon } from "@heroicons/react/24/outline";
+import React, { useEffect, useState } from "react";
+import DetalleCotizacion from "../cotizaciones/DetalleCotizacion";
+import EditorCotizacion from "../cotizaciones/EditorCotizacion";
+import ListadoCotizaciones from "../cotizaciones/ListadoCotizaciones";
 
-interface Props {
-  stats: any;
-}
+type ActiveView = "listado" | "editor" | "detalle";
 
-export default function CotizacionesSection({ stats }: Props) {
-  const cotizaciones = [
-    {
-      id: 1,
-      cliente: "Juan Pérez",
-      vehiculo: "Honda Civic 2018",
-      total: 1250,
-      estado: "pendiente",
-      fecha: "2024-09-15",
-    },
-    {
-      id: 2,
-      cliente: "María García",
-      vehiculo: "Toyota Corolla 2020",
-      total: 850,
-      estado: "aprobada",
-      fecha: "2024-09-14",
-    },
-    {
-      id: 3,
-      cliente: "Carlos López",
-      vehiculo: "Nissan Sentra 2019",
-      total: 2100,
-      estado: "enviada",
-      fecha: "2024-09-13",
-    },
-    {
-      id: 4,
-      cliente: "Ana Rodríguez",
-      vehiculo: "Ford Focus 2017",
-      total: 950,
-      estado: "rechazada",
-      fecha: "2024-09-12",
-    },
-  ];
+const CotizacionesSection: React.FC = () => {
+  const [activeView, setActiveView] = useState<ActiveView>("listado");
+  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<QuoteStats>({
+    totalCotizaciones: 0,
+    borradores: 0,
+    enviadas: 0,
+    aprobadas: 0,
+    rechazadas: 0,
+    ajusteSolicitado: 0,
+    vencidas: 0,
+    totalMontoMes: 0,
+    tasaAprobacion: 0,
+    tiempoPromedioRespuesta: 0,
+  });
 
+  // Cargar estadísticas
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const loadStats = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("/api/cotizaciones/stats");
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data.data);
+      }
+    } catch (error) {
+      console.error("Error cargando estadísticas:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewChange = (view: ActiveView, quote?: Quote) => {
+    setActiveView(view);
+    if (quote) {
+      setSelectedQuote(quote);
+    }
+  };
+
+  const handleNewQuote = () => {
+    setSelectedQuote(null);
+    setActiveView("editor");
+  };
+
+  const handleEditQuote = (quote: Quote) => {
+    setSelectedQuote(quote);
+    setActiveView("editor");
+  };
+
+  const handleViewQuote = (quote: Quote) => {
+    setSelectedQuote(quote);
+    setActiveView("detalle");
+  };
+
+  const handleBackToList = () => {
+    setActiveView("listado");
+    setSelectedQuote(null);
+    loadStats(); // Recargar estadísticas
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
-      {/* Estadísticas de cotizaciones */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Total Cotizaciones</p>
-              <p className="text-3xl font-bold text-white">
-                {stats?.totalCotizaciones || cotizaciones.length}
-              </p>
-            </div>
-            <DocumentTextIcon className="h-12 w-12 text-blue-500" />
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="bg-blue-100 p-2 rounded-lg">
+            <DocumentTextIcon className="h-6 w-6 text-blue-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white">
+              {activeView === "listado" && "Gestión de Cotizaciones"}
+              {activeView === "editor" &&
+                (selectedQuote ? "Editar Cotización" : "Nueva Cotización")}
+              {activeView === "detalle" && "Detalle de Cotización"}
+            </h1>
+            <p className="text-gray-400">
+              {activeView === "listado" && "Crear, enviar y dar seguimiento a cotizaciones"}
+              {activeView === "editor" && "Complete los datos de la cotización"}
+              {activeView === "detalle" && "Seguimiento y gestión de la cotización"}
+            </p>
           </div>
         </div>
 
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Pendientes</p>
-              <p className="text-3xl font-bold text-white">
-                {cotizaciones.filter((c) => c.estado === "pendiente").length}
-              </p>
-            </div>
-            <ClockIcon className="h-12 w-12 text-yellow-500" />
-          </div>
-        </div>
+        {activeView === "listado" && (
+          <button
+            onClick={handleNewQuote}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+          >
+            <PlusIcon className="h-5 w-5" />
+            <span>Nueva Cotización</span>
+          </button>
+        )}
 
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Aprobadas</p>
-              <p className="text-3xl font-bold text-white">
-                {cotizaciones.filter((c) => c.estado === "aprobada").length}
-              </p>
-            </div>
-            <CheckCircleIcon className="h-12 w-12 text-green-500" />
-          </div>
-        </div>
-
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Valor Total</p>
-              <p className="text-3xl font-bold text-white">
-                Q{cotizaciones.reduce((sum, c) => sum + c.total, 0).toLocaleString()}
-              </p>
-            </div>
-            <CurrencyDollarIcon className="h-12 w-12 text-green-500" />
-          </div>
-        </div>
+        {(activeView === "editor" || activeView === "detalle") && (
+          <button
+            onClick={handleBackToList}
+            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            ← Volver al listado
+          </button>
+        )}
       </div>
 
-      {/* Acciones rápidas */}
-      <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-white">Gestión de Cotizaciones</h2>
-
-          <div className="flex items-center space-x-4">
-            <button className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors flex items-center space-x-2">
-              <PlusIcon className="h-5 w-5" />
-              <span>Nueva Cotización</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Lista de cotizaciones */}
-      <div className="bg-secondary-800 rounded-xl border border-secondary-700">
-        <div className="p-6 border-b border-secondary-700">
-          <h3 className="text-xl font-semibold text-white">Cotizaciones Recientes</h3>
-        </div>
-
-        <div className="p-6 space-y-4">
-          {cotizaciones.map((cotizacion) => (
-            <div
-              key={cotizacion.id}
-              className="p-6 bg-secondary-700/50 rounded-lg hover:bg-secondary-700 transition-colors"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h4 className="font-semibold text-white">
-                    COT-2024-{cotizacion.id.toString().padStart(3, "0")}
-                  </h4>
-                  <p className="text-sm text-gray-400">{cotizacion.cliente}</p>
-                </div>
-                <div
-                  className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    cotizacion.estado === "pendiente"
-                      ? "bg-yellow-500/20 text-yellow-400"
-                      : cotizacion.estado === "aprobada"
-                      ? "bg-green-500/20 text-green-400"
-                      : cotizacion.estado === "enviada"
-                      ? "bg-blue-500/20 text-blue-400"
-                      : "bg-red-500/20 text-red-400"
-                  }`}
-                >
-                  {cotizacion.estado.charAt(0).toUpperCase() + cotizacion.estado.slice(1)}
-                </div>
+      {/* Estadísticas - Solo en listado */}
+      {activeView === "listado" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-secondary-700 rounded-xl p-6 border border-secondary-600">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-400">Total Cotizaciones</p>
+                <p className="text-2xl font-bold text-white">{stats.totalCotizaciones}</p>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div>
-                  <p className="text-xs text-gray-400">Vehículo</p>
-                  <p className="text-sm text-white font-medium">{cotizacion.vehiculo}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400">Fecha</p>
-                  <p className="text-sm text-white font-medium">
-                    {new Date(cotizacion.fecha).toLocaleDateString("es-GT")}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400">Total</p>
-                  <p className="text-sm text-white font-medium">
-                    Q{cotizacion.total.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end space-x-3">
-                <button className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors">
-                  Ver Detalles
-                </button>
-                {cotizacion.estado === "pendiente" && (
-                  <>
-                    <button className="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded transition-colors">
-                      Aprobar
-                    </button>
-                    <button className="px-3 py-1 text-xs bg-primary-600 hover:bg-primary-700 text-white rounded transition-colors flex items-center space-x-1">
-                      <PaperAirplaneIcon className="h-3 w-3" />
-                      <span>Enviar</span>
-                    </button>
-                  </>
-                )}
+              <div className="bg-blue-500 bg-opacity-20 p-3 rounded-lg">
+                <DocumentTextIcon className="h-6 w-6 text-blue-400" />
               </div>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Proceso de cotización */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700 hover:border-primary-500 transition-colors cursor-pointer">
-          <div className="flex items-center space-x-4 mb-4">
-            <div className="p-3 bg-blue-500/20 rounded-lg">
-              <PlusIcon className="h-6 w-6 text-blue-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-white">Crear Cotización</h3>
           </div>
-          <p className="text-gray-400 mb-4">Generar nueva cotización para cliente</p>
-          <ul className="space-y-2 text-sm text-gray-300">
-            <li>• Seleccionar servicios</li>
-            <li>• Calcular costos</li>
-            <li>• Generar documento</li>
-          </ul>
-        </div>
 
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700 hover:border-primary-500 transition-colors cursor-pointer">
-          <div className="flex items-center space-x-4 mb-4">
-            <div className="p-3 bg-green-500/20 rounded-lg">
-              <CheckCircleIcon className="h-6 w-6 text-green-400" />
+          <div className="bg-secondary-700 rounded-xl p-6 border border-secondary-600">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-400">Enviadas</p>
+                <p className="text-2xl font-bold text-white">{stats.enviadas}</p>
+              </div>
+              <div className="bg-yellow-500 bg-opacity-20 p-3 rounded-lg">
+                <LinkIcon className="h-6 w-6 text-yellow-400" />
+              </div>
             </div>
-            <h3 className="text-lg font-semibold text-white">Aprobar</h3>
           </div>
-          <p className="text-gray-400 mb-4">Revisar y aprobar cotizaciones</p>
-          <ul className="space-y-2 text-sm text-gray-300">
-            <li>• Verificar precios</li>
-            <li>• Confirmar disponibilidad</li>
-            <li>• Autorizar descuentos</li>
-          </ul>
-        </div>
 
-        <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700 hover:border-primary-500 transition-colors cursor-pointer">
-          <div className="flex items-center space-x-4 mb-4">
-            <div className="p-3 bg-purple-500/20 rounded-lg">
-              <PaperAirplaneIcon className="h-6 w-6 text-purple-400" />
+          <div className="bg-secondary-700 rounded-xl p-6 border border-secondary-600">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-400">Aprobadas</p>
+                <p className="text-2xl font-bold text-white">{stats.aprobadas}</p>
+              </div>
+              <div className="bg-green-500 bg-opacity-20 p-3 rounded-lg">
+                <span className="text-green-400 text-xl">✓</span>
+              </div>
             </div>
-            <h3 className="text-lg font-semibold text-white">Enviar a Cliente</h3>
           </div>
-          <p className="text-gray-400 mb-4">Envío automático al cliente</p>
-          <ul className="space-y-2 text-sm text-gray-300">
-            <li>• Email automático</li>
-            <li>• WhatsApp opcional</li>
-            <li>• Seguimiento de lectura</li>
-          </ul>
+
+          <div className="bg-secondary-700 rounded-xl p-6 border border-secondary-600">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-400">Tasa Aprobación</p>
+                <p className="text-2xl font-bold text-white">{stats.tasaAprobacion.toFixed(1)}%</p>
+              </div>
+              <div className="bg-purple-500 bg-opacity-20 p-3 rounded-lg">
+                <span className="text-purple-400 text-xl">%</span>
+              </div>
+            </div>
+          </div>
         </div>
+      )}
+
+      {/* Contenido principal */}
+      <div className="bg-secondary-700 rounded-xl border border-secondary-600">
+        {activeView === "listado" && (
+          <ListadoCotizaciones
+            onEdit={handleEditQuote}
+            onView={handleViewQuote}
+            onNew={handleNewQuote}
+            stats={stats}
+          />
+        )}
+
+        {activeView === "editor" && (
+          <EditorCotizacion
+            quote={selectedQuote}
+            onSave={handleBackToList}
+            onCancel={handleBackToList}
+          />
+        )}
+
+        {activeView === "detalle" && selectedQuote && (
+          <DetalleCotizacion
+            quote={selectedQuote}
+            onEdit={() => handleEditQuote(selectedQuote)}
+            onBack={handleBackToList}
+          />
+        )}
       </div>
     </div>
   );
-}
+};
+
+export default CotizacionesSection;

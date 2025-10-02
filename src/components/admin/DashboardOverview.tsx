@@ -148,9 +148,9 @@ export default function DashboardOverview({ stats }: Props) {
           </h3>
         </div>
         <div className="p-6">
-          {stats?.recentAppointments?.length > 0 ? (
+          {(stats?.recentAppointments?.length || 0) > 0 ? (
             <div className="space-y-4">
-              {stats.recentAppointments.slice(0, 5).map((appointment: any) => (
+              {(stats?.recentAppointments || []).slice(0, 5).map((appointment: any) => (
                 <div
                   key={appointment.id}
                   className="flex items-center justify-between p-4 bg-secondary-700/50 rounded-lg hover:bg-secondary-700 transition-colors"
