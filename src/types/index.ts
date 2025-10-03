@@ -95,6 +95,7 @@ export type VehicleStatus =
   | "DELIVERED";
 export type TaskStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export type AppointmentStatus = "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
 
 // Auth types
 export interface AuthUser {
@@ -416,3 +417,396 @@ export type QuoteEventType =
   | "ENLACE_RENOVADO"
   | "VENCIDA"
   | "CANCELADA";
+
+// ========== CALENDAR TYPES ==========
+
+export interface CalendarEvent {
+  id: string;
+  title?: string;
+  type: EventType;
+  scheduledAt: Date;
+  startAt?: Date;
+  endAt?: Date;
+  estimatedDuration?: number; // en minutos
+  location?: string;
+  note?: string;
+  notes?: string; // Campo existente de appointment
+  status: AppointmentStatus;
+
+  // Referencias opcionales
+  vehicleId?: string;
+  customerId?: string;
+  technicianId?: string;
+  taskId?: string;
+
+  // Recordatorios
+  reminder24h: boolean;
+  reminder1h: boolean;
+  reminder15m: boolean;
+
+  // Bloqueos
+  isBlocker: boolean;
+
+  // Timestamps
+  createdAt: Date;
+  updatedAt: Date;
+
+  // Relaciones
+  vehicle?: Vehicle;
+  customer?: Customer;
+  technician?: User;
+  task?: Task;
+}
+
+export type EventType =
+  | "CITA"
+  | "RECOGIDA"
+  | "ENTREGA"
+  | "LLAMADA"
+  | "MANTENIMIENTO"
+  | "PRUEBA_RUTA"
+  | "OTRO";
+
+export interface EventFilter {
+  technicianId?: string;
+  type?: EventType;
+  taskId?: string;
+  customerId?: string;
+  startDate?: Date;
+  endDate?: Date;
+  status?: AppointmentStatus;
+  includeBlockers?: boolean;
+}
+
+export interface CalendarViewMode {
+  mode: "day" | "week" | "month";
+  date: Date;
+}
+
+export interface TechnicianAgendaStats {
+  eventsToday: number;
+  eventsNext48h: number;
+  blockedHours: number;
+}
+
+export interface EventDragData {
+  eventId: string;
+  newStartTime: Date;
+  newEndTime?: Date;
+}
+
+export interface CalendarEventCreate {
+  title?: string;
+  type: EventType;
+  scheduledAt: Date;
+  startAt?: Date;
+  endAt?: Date;
+  estimatedDuration?: number;
+  location?: string;
+  note?: string;
+  vehicleId?: string;
+  customerId?: string;
+  technicianId?: string;
+  taskId?: string;
+  reminder24h?: boolean;
+  reminder1h?: boolean;
+  reminder15m?: boolean;
+  isBlocker?: boolean;
+}
+
+export interface CalendarEventUpdate extends Partial<CalendarEventCreate> {
+  id: string;
+  status?: AppointmentStatus;
+}
+
+// Colores por tipo de evento
+export const EVENT_TYPE_COLORS: Record<EventType, { bg: string; text: string; border: string }> = {
+  CITA: { bg: "bg-blue-500/20", text: "text-blue-400", border: "border-blue-500" },
+  RECOGIDA: { bg: "bg-green-500/20", text: "text-green-400", border: "border-green-500" },
+  ENTREGA: { bg: "bg-purple-500/20", text: "text-purple-400", border: "border-purple-500" },
+  LLAMADA: { bg: "bg-yellow-500/20", text: "text-yellow-400", border: "border-yellow-500" },
+  MANTENIMIENTO: { bg: "bg-red-500/20", text: "text-red-400", border: "border-red-500" },
+  PRUEBA_RUTA: { bg: "bg-indigo-500/20", text: "text-indigo-400", border: "border-indigo-500" },
+  OTRO: { bg: "bg-gray-500/20", text: "text-gray-400", border: "border-gray-500" },
+};
+
+// Labels para los tipos de evento
+export const EVENT_TYPE_LABELS: Record<EventType, string> = {
+  CITA: "Cita",
+  RECOGIDA: "Recogida",
+  ENTREGA: "Entrega",
+  LLAMADA: "Llamada",
+  MANTENIMIENTO: "Mantenimiento",
+  PRUEBA_RUTA: "Prueba de Ruta",
+  OTRO: "Otro",
+};
+
+// ===============================
+// TIPOS PARA SISTEMA DE REPORTES
+// ===============================
+
+export type ReportType =
+  | "operacion-diaria"
+  | "tiempos-sla"
+  | "cotizaciones-embudo"
+  | "productividad-tecnicos"
+  | "clientes-retencion"
+  | "vehiculos"
+  | "agenda-cumplimiento"
+  | "evidencias-auditoria";
+
+export interface ReportFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  startDate?: string;
+  endDate?: string;
+  technicianId?: string;
+  customerId?: string;
+  vehicleId?: string;
+  status?: VehicleStatus;
+  eventType?: EventType;
+  preset?: "today" | "week" | "month" | "custom";
+}
+
+export interface KPI {
+  label: string;
+  title?: string;
+  value: string | number;
+  subtitle?: string;
+  trend?:
+    | {
+        value: number;
+        isPositive: boolean;
+        period: string;
+      }
+    | number;
+  color?: "green" | "yellow" | "red" | "blue" | "purple";
+  icon?: string;
+}
+
+export interface ReportData {
+  type: ReportType;
+  title: string;
+  subtitle?: string;
+  kpis: KPI[];
+  data: any[];
+  totalRecords?: number;
+  lastUpdated: Date;
+  filters: ReportFilters;
+}
+
+// Reportes específicos
+export interface OperacionDiariaData {
+  ingresosDia: number;
+  otsActivas: number;
+  otsFinalizadas: number;
+  otsEntregadas: number;
+  atrasadasCount: number;
+  atrasadasPercent: number;
+  slaOnTime: number;
+  slaPercentage: number;
+  detalleOTs: {
+    id: string;
+    trackingCode: string;
+    cliente: string;
+    vehiculo: string;
+    tecnico?: string;
+    status: VehicleStatus;
+    fechaIngreso: Date;
+    diasEnTaller: number;
+    slaDeadline?: Date;
+    isAtrasada: boolean;
+  }[];
+}
+
+export interface TiemposSLAData {
+  kpis: KPI[];
+  tiemposPorEtapa: {
+    etapa: string;
+    promedioHoras: number;
+    p50Horas: number;
+    p90Horas: number;
+  }[];
+  ordenes: {
+    id: number;
+    code: string;
+    customer: string;
+    vehicle: string;
+    technician: string;
+    tatTotalHoras?: number;
+    diasEnTaller: number;
+    estadoSLA: string;
+    receivedAt: string;
+  }[];
+}
+
+export interface CotizacionesEmbudoData {
+  kpis: KPI[];
+  embudo: {
+    borradores: number;
+    enviadas: number;
+    aprobadas: number;
+    rechazadas: number;
+  };
+  cotizaciones: {
+    id: number;
+    code: string;
+    customer: string;
+    vehicle: string;
+    total: number;
+    status: string;
+    responseTime?: number;
+    createdAt: string;
+    fechaRespuesta?: Date;
+    tiempoRespuesta?: number;
+    razonRechazo?: string;
+  }[];
+}
+
+export interface ProductividadTecnicosData {
+  kpis: KPI[];
+  tecnicos: {
+    id: number;
+    name: string;
+    otsFinalizadas: number;
+    onTimePercentage: number;
+    utilizacion: number;
+    tiempoPromedioHoras: number;
+    especialidad: string;
+    activo: boolean;
+  }[];
+}
+
+export interface ClientesRetencionData {
+  kpis: KPI[];
+  clientes: {
+    id: number;
+    name: string;
+    email: string;
+    status: string;
+    totalVisits: number;
+    totalSpent: number;
+    avgSpentPerVisit: number;
+    daysSinceLastVisit: number;
+    vehicleCount: number;
+  }[];
+  distribucionFrecuencia: Record<string, number>;
+  topClientesPorValor: any[];
+}
+
+export interface VehiculosData {
+  kpis: KPI[];
+  marcas: {
+    brand: string;
+    count: number;
+    avgServicesPerVehicle?: number;
+  }[];
+  proximasRevisiones: {
+    id: number;
+    brand: string;
+    model: string;
+    year: number;
+    plate: string;
+    customer: string;
+    nextReview: string;
+    daysUntilReview: number;
+    isOverdue: boolean;
+    priority: string;
+  }[];
+  distribucionAnos: {
+    year: number;
+    count: number;
+  }[];
+  historialVehiculos: {
+    vehicleId: string;
+    trackingCode: string;
+    cliente: string;
+    vehiculo: string;
+    totalVisitas: number;
+    ultimoEstado: VehicleStatus;
+    fechaUltimaVisita: Date;
+    ots: {
+      id: string;
+      fecha: Date;
+      status: VehicleStatus;
+      tecnico?: string;
+    }[];
+  }[];
+}
+
+export interface AgendaCumplimientoData {
+  kpis: KPI[];
+  citas: {
+    id: number;
+    date: string;
+    customer: string;
+    vehicle: string;
+    technician: string;
+    complianceStatus: string;
+    rescheduledCount: number;
+  }[];
+  distribucionDias?: {
+    day: string;
+    total: number;
+    completionRate?: number;
+  }[];
+}
+
+export interface EvidenciasAuditoriaData {
+  kpis: KPI[];
+  evidencias: {
+    id: number;
+    code: string;
+    customer: string;
+    vehicle: string;
+    totalPhotos: number;
+    porcentajeCobertura?: number;
+    auditScore: number;
+    nivelCumplimiento: string;
+  }[];
+  distribucionNiveles?: Record<string, number>;
+  accionesCriticas: {
+    totalAcciones: number;
+    porTipo: {
+      tipo: string;
+      count: number;
+      description: string;
+    }[];
+  };
+  detalleAuditoria: {
+    fecha: Date;
+    usuario: string;
+    accion: string;
+    entidad: string;
+    entityId: string;
+    detalles: string;
+    ip?: string;
+  }[];
+  detalleEvidencias: {
+    otId: string;
+    trackingCode: string;
+    cliente: string;
+    vehiculo: string;
+    tecnico?: string;
+    totalFotos: number;
+    fotosPorEtapa: Record<string, number>;
+    fotasFaltantes: string[];
+    ultimaFoto: Date;
+  }[];
+}
+
+// Utilidades para reportes
+export interface ExportOptions {
+  format: "csv" | "pdf";
+  filename?: string;
+  includeFilters?: boolean;
+  includeKPIs?: boolean;
+}
+
+export interface DrillDownContext {
+  entityType: "vehicle" | "customer" | "quote" | "appointment" | "task";
+  entityId: string;
+  source: ReportType;
+  filters?: ReportFilters;
+  type?: "workOrder" | string;
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
 import {
   BellIcon,
@@ -221,8 +222,13 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            {/* Indicadores de estado */}
+            {/* Notificaciones e Indicadores de estado */}
             <div className="flex items-center space-x-4">
+              {/* Notification Bell */}
+              <div className="flex items-center">
+                <NotificationBell userId="demo-admin-user" className="mr-2" />
+              </div>
+
               <div className="text-right">
                 <p className="text-sm text-gray-400">Última actualización</p>
                 <p className="text-white font-medium">{new Date().toLocaleTimeString("es-GT")}</p>

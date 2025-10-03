@@ -16,7 +16,7 @@ model User {
   email     String   @unique
   name      String
   password  String
-  role      UserRole @default(TECHNICIAN)
+  role      UserRoleEnum @default(TECHNICIAN)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -29,6 +29,15 @@ model User {
   inspectionPhotos InspectionPhoto[] @relation("TechnicianPhotos")
   workflowUpdates WorkflowStatus[] @relation("TechnicianWorkflow")
   clientMerges ClientMergeLog[] @relation("UserMerges")
+  notifications Notification[]
+  notificationSettings UserNotificationSettings?
+  auditLogs AuditLog[] @relation("UserAuditLogs")
+
+  // RBAC Relations (ADDITIVE)
+  userRoles UserRole[] @relation("UserRoles")
+  assignedRoles UserRole[] @relation("AssignedRoles")
+  publishedTerms TermsVersion[] @relation("PublishedTerms")
+  createdTemplates DocumentTemplate[] @relation("CreatedTemplates")
 
   @@map("users")
 }
@@ -57,6 +66,7 @@ model Customer {
   appointments Appointment[]
   mergeHistory ClientMergeLog[] @relation("MergedClient")
   mergeSource  ClientMergeLog[] @relation("SourceClient")
+  notifications Notification[] @relation("CustomerNotifications")
 
   @@map("customers")
 }
@@ -99,6 +109,12 @@ model Vehicle {
   customerId   String
   status       VehicleStatus @default(RECEIVED)
   isActive     Boolean       @default(true) // Activo/inactivo
+
+  // Campos adicionales para reportes
+  receivedAt   DateTime?     // Fecha de recepción en taller
+  deliveredAt  DateTime?     // Fecha de entrega al cliente
+  slaDeadline  DateTime?     // Fecha límite SLA para este vehículo
+
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -109,6 +125,7 @@ model Vehicle {
   appointments Appointment[]
   inspectionPhotos InspectionPhoto[]
   workflowHistory WorkflowStatus[]
+  notifications Notification[] @relation("VehicleNotifications")
 
   @@map("vehicles")
 }
@@ -131,9 +148,11 @@ model Task {
   updatedAt    DateTime   @updatedAt
 
   // Relaciones
-  vehicle     Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  technician  User?   @relation("TechnicianTasks", fields: [technicianId], references: [id])
-  createdBy   User    @relation("CreatedTasks", fields: [createdById], references: [id])
+  vehicle      Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  technician   User?         @relation("TechnicianTasks", fields: [technicianId], references: [id])
+  createdBy    User          @relation("CreatedTasks", fields: [createdById], references: [id])
+  appointments Appointment[] // Citas relacionadas con esta tarea
+  notifications Notification[] @relation("TaskNotifications")
 
   @@map("tasks")
 }
@@ -152,6 +171,13 @@ model Quote {
   customerId   String
   createdById  String
   approvedAt   DateTime?
+
+  // Campos adicionales para reportes
+  sentAt       DateTime?   // Cuando se envió la cotización
+  rejectedAt   DateTime?   // Cuando fue rechazada
+  rejectionReason String?  @db.Text // Razón del rechazo
+  responseTime Int?        // Tiempo de respuesta en horas
+
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
@@ -160,6 +186,7 @@ model Quote {
   customer  Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
   createdBy User       @relation(fields: [createdById], references: [id])
   items     QuoteItem[]
+  notifications Notification[] @relation("QuoteNotifications")
 
   @@map("quotes")
 }
@@ -180,7 +207,7 @@ model QuoteItem {
 }
 
 // Enums
-enum UserRole {
+enum UserRoleEnum {
   ADMIN
   TECHNICIAN
 }
@@ -225,23 +252,48 @@ enum QuoteStatus {
   EXPIRED
 }
 
-// Modelo de Cita (Appointment)
+// Modelo de Cita (Appointment) - Extendido para calendario
 model Appointment {
   id           String            @id @default(cuid())
   scheduledAt  DateTime
   estimatedDuration Int?         // en minutos
   status       AppointmentStatus @default(SCHEDULED)
   notes        String?           @db.Text
-  vehicleId    String
-  customerId   String
+  vehicleId    String?           // Ahora opcional para eventos no relacionados con vehículos
+  customerId   String?           // Ahora opcional para eventos no relacionados con clientes
   technicianId String?
+
+  // Nuevos campos para calendario
+  title        String?           // Título personalizado del evento
+  type         EventType         @default(CITA)
+  startAt      DateTime?         // Hora específica de inicio (si difiere de scheduledAt)
+  endAt        DateTime?         // Hora específica de fin
+  location     String?           // Ubicación del evento (texto libre)
+  note         String?           @db.Text // Nota adicional
+  taskId       String?           // Referencia opcional a tarea/orden de trabajo
+
+  // Recordatorios
+  reminder24h  Boolean           @default(false)
+  reminder1h   Boolean           @default(false)
+  reminder15m  Boolean           @default(false)
+
+  // Bloqueos de técnico
+  isBlocker    Boolean           @default(false) // Para vacaciones/licencias
+
+  // Campos adicionales para reportes
+  doneAt       DateTime?         // Cuando se marca como realizado
+  rescheduledCount Int           @default(0) // Número de reprogramaciones
+  slaDeadline  DateTime?         // Fecha límite SLA
+
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 
   // Relaciones
-  vehicle    Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  technician User?   @relation("TechnicianAppointments", fields: [technicianId], references: [id])
+  vehicle    Vehicle?   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  customer   Customer?  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  technician User?      @relation("TechnicianAppointments", fields: [technicianId], references: [id])
+  task       Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  notifications Notification[] @relation("AppointmentNotifications")
 
   @@map("appointments")
 }
@@ -273,6 +325,16 @@ enum AppointmentStatus {
   COMPLETED
   CANCELLED
   NO_SHOW
+}
+
+enum EventType {
+  CITA          // Cita regular
+  RECOGIDA      // Recogida de vehículo
+  ENTREGA       // Entrega de vehículo
+  LLAMADA       // Llamada de seguimiento
+  MANTENIMIENTO // Recordatorio de mantenimiento
+  PRUEBA_RUTA   // Prueba de ruta
+  OTRO          // Otros eventos
 }
 
 // Modelo de Historial de Estados del Flujo de Trabajo
@@ -328,4 +390,325 @@ model Media {
   @@map("media")
 }
 
-// El modelo Reminder ya está definido arriba
+// Modelo para cache de reportes y métricas históricas
+model ReportSnapshot {
+  id           String   @id @default(cuid())
+  reportType   String   // "operacion_diaria", "tiempos_sla", "cotizaciones", etc.
+  snapshotDate DateTime // Fecha del snapshot
+  metric       String   // Nombre de la métrica
+  value        Decimal? @db.Decimal(15, 4) // Valor numérico
+  stringValue  String?  // Valor string si aplica
+  dimensions   Json?    // Dimensiones adicionales (técnico, cliente, etc.)
+  createdAt    DateTime @default(now())
+
+  @@index([reportType, snapshotDate])
+  @@index([reportType, metric, snapshotDate])
+  @@map("report_snapshots")
+}
+
+// Sistema de Notificaciones
+model Notification {
+  id          String            @id @default(cuid())
+  userId      String
+  type        NotificationType
+  title       String
+  body        String            @db.Text
+
+  // Referencias a entidades relacionadas
+  taskId      String?           // Para notificaciones de OTs
+  quoteId     String?           // Para notificaciones de cotizaciones
+  appointmentId String?         // Para notificaciones de agenda
+  customerId  String?           // Para notificaciones de clientes
+  vehicleId   String?           // Para notificaciones de vehículos
+
+  priority    NotificationPriority @default(NORMAL)
+  channel     NotificationChannel  @default(IN_APP)
+  payload     Json?             // Datos adicionales específicos por tipo
+  groupKey    String?           // Para deduplicación de notificaciones similares
+
+  // Estados y timestamps
+  readAt      DateTime?
+  dismissedAt DateTime?
+  snoozeUntil DateTime?
+  deliveredAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Relaciones
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task        Task?             @relation("TaskNotifications", fields: [taskId], references: [id], onDelete: Cascade)
+  quote       Quote?            @relation("QuoteNotifications", fields: [quoteId], references: [id], onDelete: Cascade)
+  appointment Appointment?      @relation("AppointmentNotifications", fields: [appointmentId], references: [id], onDelete: Cascade)
+  customer    Customer?         @relation("CustomerNotifications", fields: [customerId], references: [id], onDelete: Cascade)
+  vehicle     Vehicle?          @relation("VehicleNotifications", fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+  @@index([groupKey])
+  @@map("notifications")
+}
+
+model UserNotificationSettings {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  typesEnabled  Json      @default("{}") // Tipos de notificaciones habilitadas
+  intensity     NotificationIntensity @default(NORMAL)
+  snoozeUntil   DateTime? // Snooze global hasta esta fecha/hora
+  channels      Json      @default("[\"IN_APP\"]") // Canales habilitados (futuro)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relaciones
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_notification_settings")
+}
+
+// Enums para el sistema de notificaciones
+enum NotificationType {
+  // OTs / Flujo de trabajo
+  OT_STATUS_CHANGED
+  OT_ASSIGNED
+  OT_REASSIGNED
+  OT_SLA_WARNING
+  OT_SLA_OVERDUE
+  OT_WAITING_EXIT
+
+  // Cotizaciones
+  QUOTE_CREATED
+  QUOTE_SENT
+  QUOTE_APPROVED
+  QUOTE_REJECTED
+  QUOTE_ADJUSTMENT_REQUESTED
+  QUOTE_EXPIRING
+
+  // Agenda
+  APPOINTMENT_REMINDER_24H
+  APPOINTMENT_REMINDER_1H
+  APPOINTMENT_REMINDER_15M
+  APPOINTMENT_RESCHEDULED
+  APPOINTMENT_CANCELLED
+
+  // Evidencias
+  INTAKE_MISSING_PHOTOS
+  NEW_PHOTOS_UPLOADED
+
+  // Sistema
+  SYSTEM_ERROR
+  STORAGE_LIMIT_WARNING
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum NotificationChannel {
+  IN_APP
+  WHATSAPP    // Para futuro
+  PUSH        // Para futuro
+}
+
+enum NotificationIntensity {
+  NORMAL
+  CRITICAL_ONLY
+}
+
+// Modelo de Auditoría
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String   // Usuario que realizó la acción
+  action      String   // create|update|delete|status_change|assign|merge|pause|resume|send|approve|reject|remind|upload|reprogram
+  entityType  String   // work_order|client|vehicle|quote|appointment|media|notification|settings|user
+  entityId    String   // ID de la entidad afectada
+  summary     String   // Mensaje humano readable
+  diff        Json?    // Cambios {field:{from,to}} o payload del evento
+  meta        Json?    // IP, User-Agent, origen, cause, tokens, etc.
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  actor       User     @relation("UserAuditLogs", fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ====== CONFIGURATION SYSTEM TABLES (ADDITIVE) ======
+
+// Sistema de Configuración - Tabla de Settings
+model Setting {
+  id          String   @id @default(cuid())
+  namespace   String   // branding, sla, workflow, notification, etc.
+  key         String   // logo_url, diagnostico_hours, whatsapp_enabled, etc.
+  value       Json     // Valor flexible (string, number, object, array)
+  description String?  @db.Text // Descripción del setting
+  type        String   @default("string") // string, number, boolean, json, array
+  isSystem    Boolean  @default(false) // Settings del sistema vs usuario
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([namespace, key])
+  @@index([namespace])
+  @@map("settings")
+}
+
+// Sistema RBAC - Roles
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String   // Nombre para mostrar
+  description String?  @db.Text
+  isSystem    Boolean  @default(false) // Roles del sistema vs personalizados
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  permissions RolePermission[]
+  userRoles   UserRole[]
+
+  @@map("roles")
+}
+
+// Sistema RBAC - Permisos
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique // clientes.ver, vehiculos.crear, reportes.exportar, etc.
+  displayName String   // Nombre para mostrar
+  description String?  @db.Text
+  category    String   // clients, vehicles, work_orders, quotes, etc.
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  roles       RolePermission[]
+
+  @@index([category])
+  @@map("permissions")
+}
+
+// Sistema RBAC - Relación Rol-Permiso
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  permissionId String
+  granted      Boolean    @default(true) // true = grant, false = deny
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  // Relaciones
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// Sistema RBAC - Asignación Usuario-Rol
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+  assignedBy String? // Usuario que asignó el rol
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  user      User     @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assigner  User?    @relation("AssignedRoles", fields: [assignedBy], references: [id])
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+// Versiones de Términos y Condiciones
+model TermsVersion {
+  id          String   @id @default(cuid())
+  type        String   // cotizacion, ingreso, privacidad, calidad
+  version     String   // v1.0, v1.1, etc.
+  title       String   // Título del documento
+  content     String   @db.LongText // Contenido completo
+  isActive    Boolean  @default(false) // Solo una versión activa por tipo
+  publishedAt DateTime?
+  publishedBy String?  // Usuario que publicó
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  publisher   User?    @relation("PublishedTerms", fields: [publishedBy], references: [id])
+
+  @@unique([type, version])
+  @@index([type, isActive])
+  @@map("terms_versions")
+}
+
+// Plantillas de Documentos
+model DocumentTemplate {
+  id          String   @id @default(cuid())
+  type        String   // recepcion_checklist, calidad_checklist, cotizacion_footer, etc.
+  name        String   // Nombre descriptivo
+  content     String   @db.LongText // Contenido de la plantilla (puede ser HTML, JSON, etc.)
+  variables   Json?    // Variables disponibles para la plantilla
+  isActive    Boolean  @default(true)
+  isSystem    Boolean  @default(false)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  creator     User?    @relation("CreatedTemplates", fields: [createdBy], references: [id])
+
+  @@unique([type, name])
+  @@index([type, isActive])
+  @@map("document_templates")
+}
+
+// Causas de Espera (configurable)
+model WaitCause {
+  id          String   @id @default(cuid())
+  name        String   @unique // Pieza, Cliente, Externo, Otro
+  description String?  @db.Text
+  color       String?  // Color para UI (#ff5722, etc.)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wait_causes")
+}
+
+// Logs de Respaldos
+model BackupLog {
+  id              String   @id @default(cuid())
+  tipoRespaldo    String   // automatico, manual
+  estado          String   // en_progreso, completado, error
+  fechaInicio     DateTime @default(now())
+  fechaFin        DateTime?
+  rutaArchivo     String?  // Ruta donde se guardó el backup
+  tamanioBytes    BigInt?  // Tamaño del archivo de backup
+  tipoDestino     String   // local, s3, minio
+  configuracion   Json     // Configuración usada para el backup
+  error           String?  @db.Text // Error si falló
+  duracionMs      Int?     // Duración en milisegundos
+  checksum        String?  // Checksum del archivo
+  encriptado      Boolean  @default(false)
+  metadatos       Json?    // Metadatos adicionales
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([estado, fechaInicio])
+  @@index([tipoRespaldo])
+  @@map("backup_logs")
+}
+
+// Extensión a la tabla User para RBAC
+// Esta extensión se hace mediante relaciones ya definidas arriba

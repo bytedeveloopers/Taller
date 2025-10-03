@@ -1,5 +1,6 @@
 "use client";
 
+import { TestNotificationButton } from "@/components/notifications/TestNotificationButton";
 import { SimpleChart } from "@/components/ui/Charts";
 import {
   CalendarDaysIcon,
@@ -223,6 +224,11 @@ export default function DashboardOverview({ stats }: Props) {
             <p className="text-xs text-gray-400">Estadísticas y análisis</p>
           </div>
         </div>
+      </div>
+
+      {/* Test Notification Section */}
+      <div className="mt-8">
+        <TestNotificationButton />
       </div>
     </div>
   );

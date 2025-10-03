@@ -1,8 +1,10 @@
 "use client";
 
 import { useToast } from "@/components/ui/ToastNotification";
+import { createEventFromTaskAssignment } from "@/lib/calendar-integration";
 import {
   BellIcon,
+  CalendarIcon,
   CheckCircleIcon,
   ClockIcon,
   ExclamationTriangleIcon,
@@ -73,6 +75,7 @@ export default function AsignarTecnicoModal({
     lugar: "",
     duracion: 60,
   });
+  const [crearEventoCalendario, setCrearEventoCalendario] = useState(false);
 
   // Cargar técnicos con su carga de trabajo
   const cargarTecnicos = async () => {
@@ -120,6 +123,7 @@ export default function AsignarTecnicoModal({
       setSelectedTecnico("");
       setNotas("");
       setCrearRecordatorio(false);
+      setCrearEventoCalendario(false);
     }
   }, [isOpen]);
 
@@ -171,6 +175,31 @@ export default function AsignarTecnicoModal({
             "Recordatorio Creado",
             `${result.data.recordatorio.tipo.toUpperCase()}: ${result.data.recordatorio.titulo}`
           );
+        }
+
+        // Crear evento de calendario si está seleccionado
+        if (crearEventoCalendario && result.data.task) {
+          try {
+            // Programar el evento para mañana a las 10:00 AM por defecto
+            const mañana = new Date();
+            mañana.setDate(mañana.getDate() + 1);
+            mañana.setHours(10, 0, 0, 0);
+
+            await createEventFromTaskAssignment(
+              result.data.task.id,
+              selectedTecnico,
+              mañana,
+              "CITA"
+            );
+
+            showSuccess(
+              "Evento de Calendario Creado",
+              "Se ha programado automáticamente un evento en el calendario"
+            );
+          } catch (error) {
+            console.error("Error al crear evento de calendario:", error);
+            // No mostramos error al usuario para no interrumpir el flujo principal
+          }
         }
 
         onSuccess(result.data);
@@ -427,6 +456,30 @@ export default function AsignarTecnicoModal({
                 </div>
               </div>
             )}
+
+            {/* Opción de Evento de Calendario */}
+            <div className="flex items-center justify-between p-4 bg-secondary-700/20 rounded-lg border border-secondary-600">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-blue-500/10 rounded-lg">
+                  <CalendarIcon className="h-5 w-5 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-white">Crear evento en calendario</h3>
+                  <p className="text-sm text-gray-400">
+                    Programar automáticamente un evento de trabajo para mañana
+                  </p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={crearEventoCalendario}
+                  onChange={(e) => setCrearEventoCalendario(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-secondary-600 peer-focus:ring-2 peer-focus:ring-blue-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+              </label>
+            </div>
 
             {/* Botones */}
             <div className="flex items-center justify-end space-x-4 pt-4 border-t border-secondary-700">

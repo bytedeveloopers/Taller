@@ -1,11 +1,13 @@
 "use client";
 
+import { createQuoteFollowupReminder } from "@/lib/calendar-integration";
 import { Customer, Quote, QuoteItem, Vehicle, WorkOrder } from "@/types";
 import {
+  CalendarIcon,
+  CheckIcon,
   ClipboardDocumentIcon,
   LinkIcon,
   PlusIcon,
-  SaveIcon,
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -38,6 +40,9 @@ const EditorCotizacion: React.FC<EditorCotizacionProps> = ({ quote, onSave, onCa
   // Estados del enlace público
   const [publicToken, setPublicToken] = useState(quote?.publicToken || "");
   const [publicExpiresAt, setPublicExpiresAt] = useState(quote?.publicExpiresAt || null);
+
+  // Estado de seguimiento de calendario
+  const [crearSeguimientoCalendario, setCrearSeguimientoCalendario] = useState(false);
 
   useEffect(() => {
     loadClients();
@@ -176,7 +181,20 @@ const EditorCotizacion: React.FC<EditorCotizacionProps> = ({ quote, onSave, onCa
       });
 
       if (response.ok) {
+        const result = await response.json();
         alert(quote ? "Cotización actualizada exitosamente" : "Cotización creada exitosamente");
+
+        // Crear seguimiento de calendario si está habilitado
+        if (crearSeguimientoCalendario && result.data?.id) {
+          try {
+            await createQuoteFollowupReminder(result.data.id, selectedClientId, selectedVehicleId);
+            alert("Recordatorio de seguimiento programado en el calendario");
+          } catch (error) {
+            console.error("Error al crear seguimiento de calendario:", error);
+            // No interrumpir el flujo principal por este error
+          }
+        }
+
         onSave();
       } else {
         alert("Error al guardar la cotización");
@@ -264,7 +282,7 @@ const EditorCotizacion: React.FC<EditorCotizacionProps> = ({ quote, onSave, onCa
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
             disabled={loading}
           >
-            <SaveIcon className="h-5 w-5 inline mr-2" />
+            <CheckIcon className="h-5 w-5 inline mr-2" />
             {loading ? "Guardando..." : "Guardar"}
           </button>
         </div>
@@ -518,6 +536,35 @@ const EditorCotizacion: React.FC<EditorCotizacionProps> = ({ quote, onSave, onCa
               </button>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Opciones Adicionales */}
+      <div className="bg-secondary-600 rounded-lg p-6">
+        <h3 className="text-lg font-medium text-white mb-4">Opciones de Seguimiento</h3>
+
+        {/* Opción de Seguimiento de Calendario */}
+        <div className="flex items-center justify-between p-4 bg-secondary-700/30 rounded-lg border border-secondary-500">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-green-500/10 rounded-lg">
+              <CalendarIcon className="h-5 w-5 text-green-400" />
+            </div>
+            <div>
+              <h4 className="font-medium text-white">Programar seguimiento automático</h4>
+              <p className="text-sm text-gray-400">
+                Crear recordatorio para contactar al cliente en 3 días
+              </p>
+            </div>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={crearSeguimientoCalendario}
+              onChange={(e) => setCrearSeguimientoCalendario(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-secondary-600 peer-focus:ring-2 peer-focus:ring-green-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+          </label>
         </div>
       </div>
 
