@@ -8,14 +8,18 @@ import {
   PlusIcon,
   UserGroupIcon,
 } from "@heroicons/react/24/outline";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Ficha360Cliente from "../clientes/Ficha360Cliente";
 import FormularioCliente from "../clientes/FormularioCliente";
 import FusionDuplicados from "../clientes/FusionDuplicados";
 import ListadoClientes from "../clientes/ListadoClientes";
 
 interface Props {
-  stats: any;
+  stats?: {
+    total?: number;
+    activos?: number;
+    nuevosMes?: number;
+  };
 }
 
 interface Cliente {
@@ -44,7 +48,43 @@ export default function ClientesSection({ stats }: Props) {
   const [clienteIdFicha, setClienteIdFicha] = useState<string>("");
   const [modoFormulario, setModoFormulario] = useState<"create" | "edit">("create");
 
-  // Handlers para el listado de clientes
+  // Token para forzar recarga del listado al guardar/editar
+  const [reloadToken, setReloadToken] = useState(0);
+
+  // ===== Stats =====
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [clientStats, setClientStats] = useState({
+    total: stats?.total ?? 0,
+    activos: stats?.activos ?? 0,
+    nuevosMes: stats?.nuevosMes ?? 0,
+  });
+
+  const fetchClientStats = useCallback(async () => {
+    try {
+      setLoadingStats(true);
+      const r = await fetch("/api/clients/stats");
+      const data = await r.json();
+      if (r.ok) {
+        setClientStats({
+          total: data.total ?? 0,
+          activos: data.activos ?? 0,
+          nuevosMes: data.nuevosMes ?? 0,
+        });
+      } else {
+        console.warn("stats error:", data);
+      }
+    } catch (e) {
+      console.error("Error cargando stats de clientes:", e);
+    } finally {
+      setLoadingStats(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchClientStats();
+  }, [fetchClientStats]);
+
+  // ===== Handlers listado =====
   const handleCrearCliente = () => {
     setClienteSeleccionado(null);
     setModoFormulario("create");
@@ -62,23 +102,25 @@ export default function ClientesSection({ stats }: Props) {
     setFichaAbierta(true);
   };
 
-  const handleGuardarCliente = (cliente: Cliente) => {
-    // Aquí podrías actualizar el estado local si es necesario
-    console.log("Cliente guardado:", cliente);
-    // El componente ListadoClientes se actualizará automáticamente
+  const handleGuardarCliente = (_cliente: Cliente) => {
+    // refrescar tarjetas + forzar reload del listado
+    fetchClientStats();
+    setReloadToken((t) => t + 1);
   };
 
   const handleFusionCompleta = () => {
-    // Recargar el listado si está visible
     if (vista === "listado") {
-      // El componente ListadoClientes se actualizará automáticamente
+      // si quieres, podrías refrescar algo más del listado
     }
+    fetchClientStats();
+    setReloadToken((t) => t + 1);
   };
 
   if (vista === "listado") {
     return (
       <>
         <ListadoClientes
+          reloadToken={reloadToken}
           onCrearCliente={handleCrearCliente}
           onEditarCliente={handleEditarCliente}
           onVerFicha={handleVerFicha}
@@ -99,9 +141,6 @@ export default function ClientesSection({ stats }: Props) {
           clienteId={clienteIdFicha}
           onEdit={() => {
             setFichaAbierta(false);
-            // Buscar el cliente para editarlo
-            // En una implementación real, harías una petición a la API
-            // Por ahora, solo abrir el formulario en modo edición
             setModoFormulario("edit");
             setFormularioAbierto(true);
           }}
@@ -137,14 +176,18 @@ export default function ClientesSection({ stats }: Props) {
           <FusionDuplicados
             isOpen={true}
             onClose={() => setVista("dashboard")}
-            onFusionCompleta={() => setVista("listado")}
+            onFusionCompleta={() => {
+              fetchClientStats();
+              setReloadToken((t) => t + 1);
+              setVista("listado");
+            }}
           />
         </div>
       </>
     );
   }
 
-  // Vista por defecto: Dashboard
+  // ===== Dashboard =====
   return (
     <div className="space-y-6">
       {/* Header con estadísticas */}
@@ -153,7 +196,9 @@ export default function ClientesSection({ stats }: Props) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-400 text-sm">Total Clientes</p>
-              <p className="text-3xl font-bold text-white">{stats?.totalClientes || 0}</p>
+              <p className="text-3xl font-bold text-white">
+                {loadingStats ? "…" : clientStats.total}
+              </p>
             </div>
             <UserGroupIcon className="h-12 w-12 text-blue-500" />
           </div>
@@ -164,7 +209,7 @@ export default function ClientesSection({ stats }: Props) {
             <div>
               <p className="text-gray-400 text-sm">Clientes Activos</p>
               <p className="text-3xl font-bold text-white">
-                {Math.floor((stats?.totalClientes || 0) * 0.8)}
+                {loadingStats ? "…" : clientStats.activos}
               </p>
             </div>
             <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
@@ -175,7 +220,9 @@ export default function ClientesSection({ stats }: Props) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-400 text-sm">Nuevos Este Mes</p>
-              <p className="text-3xl font-bold text-white">12</p>
+              <p className="text-3xl font-bold text-white">
+                {loadingStats ? "…" : clientStats.nuevosMes}
+              </p>
             </div>
             <PlusIcon className="h-12 w-12 text-green-500" />
           </div>
@@ -215,7 +262,7 @@ export default function ClientesSection({ stats }: Props) {
         </div>
       </div>
 
-      {/* Lista de funcionalidades */}
+      {/* Bloques clicables */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Gestión de Clientes */}
         <div
@@ -276,29 +323,6 @@ export default function ClientesSection({ stats }: Props) {
             <li>• Proceso guiado de fusión</li>
             <li>• Transferencia segura de datos</li>
           </ul>
-        </div>
-      </div>
-
-      {/* Próximamente */}
-      <div className="bg-gradient-to-r from-primary-900/50 to-secondary-800 rounded-xl p-6 border border-primary-500/30">
-        <h3 className="text-xl font-semibold text-white mb-4">🚀 Próximamente</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="flex items-center space-x-3">
-            <EnvelopeIcon className="h-5 w-5 text-primary-400" />
-            <span className="text-gray-300">Sistema de notificaciones automáticas</span>
-          </div>
-          <div className="flex items-center space-x-3">
-            <MapPinIcon className="h-5 w-5 text-primary-400" />
-            <span className="text-gray-300">Geolocalización de clientes</span>
-          </div>
-          <div className="flex items-center space-x-3">
-            <PhoneIcon className="h-5 w-5 text-primary-400" />
-            <span className="text-gray-300">Integración con WhatsApp Business</span>
-          </div>
-          <div className="flex items-center space-x-3">
-            <MagnifyingGlassIcon className="h-5 w-5 text-primary-400" />
-            <span className="text-gray-300">Analytics avanzados de clientes</span>
-          </div>
         </div>
       </div>
 

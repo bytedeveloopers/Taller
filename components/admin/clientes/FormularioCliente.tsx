@@ -19,10 +19,10 @@ interface Cliente {
   email?: string;
   altPhone?: string;
   address?: string;
-  contactPreference: string;
+  contactPreference: "PHONE" | "WHATSAPP" | "EMAIL" | "SMS";
   labels: string[];
   notes?: string;
-  pickupPoints?: string;
+  pickupPoints?: string; // texto multilínea
   consents?: Record<string, boolean>;
   isActive: boolean;
 }
@@ -40,7 +40,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   cliente?: Cliente;
-  onSave: (cliente: Cliente) => void;
+  onSave: (cliente: any) => void;
   mode?: "create" | "edit";
 }
 
@@ -48,16 +48,20 @@ const CONTACT_PREFERENCES = [
   { value: "PHONE", label: "Teléfono", icon: PhoneIcon },
   { value: "WHATSAPP", label: "WhatsApp", icon: PhoneIcon },
   { value: "EMAIL", label: "Email", icon: EnvelopeIcon },
-];
+  { value: "SMS", label: "SMS", icon: PhoneIcon },
+] as const;
 
 const ETIQUETAS_PREDEFINIDAS = ["VIP", "FLOTA", "REFERIDO", "EMPRESA", "PARTICULAR", "FRECUENTE"];
 
 const CONSENTIMIENTOS = [
   { key: "marketing", label: "Acepta recibir comunicaciones de marketing" },
-  { key: "sms", label: "Acepta recibir SMS y notificaciones" },
+  { key: "notifications", label: "Acepta recibir SMS y notificaciones" },
   { key: "dataProcessing", label: "Acepta el procesamiento de datos personales" },
-  { key: "photosVideo", label: "Acepta fotos/videos del vehículo para documentación" },
+  { key: "media", label: "Acepta fotos/videos del vehículo para documentación" },
 ];
+
+const onlyDigits = (s = "") => s.replace(/\D/g, "");
+const normalizeEmail = (s?: string) => (s ? s.trim().toLowerCase() : undefined);
 
 export default function FormularioCliente({
   isOpen,
@@ -77,9 +81,10 @@ export default function FormularioCliente({
     labels: [],
     notes: "",
     pickupPoints: "",
-    consents: {},
+    consents: { marketing: false, notifications: false, dataProcessing: false, media: false },
     isActive: true,
   });
+
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -88,15 +93,11 @@ export default function FormularioCliente({
   const [nuevaEtiqueta, setNuevaEtiqueta] = useState("");
   const duplicadosTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Inicializar formulario cuando cambia el cliente
   useEffect(() => {
     if (cliente) {
       setFormData({
         ...cliente,
-        pickupPoints:
-          typeof cliente.pickupPoints === "string"
-            ? cliente.pickupPoints
-            : JSON.stringify(cliente.pickupPoints || {}),
+        pickupPoints: typeof cliente.pickupPoints === "string" ? cliente.pickupPoints : "",
         consents: cliente.consents || {},
       });
     } else {
@@ -110,7 +111,7 @@ export default function FormularioCliente({
         labels: [],
         notes: "",
         pickupPoints: "",
-        consents: {},
+        consents: { marketing: false, notifications: false, dataProcessing: false, media: false },
         isActive: true,
       });
     }
@@ -119,204 +120,200 @@ export default function FormularioCliente({
     setShowDuplicados(false);
   }, [cliente, isOpen]);
 
-  // Validar campo individual
+  const validateAll = (fd: Cliente) => {
+    const errs: Record<string, string> = {};
+    if (!fd.name?.trim()) errs.name = "El nombre es requerido";
+    else if (fd.name.trim().length < 2) errs.name = "Mínimo 2 caracteres";
+
+    if (!fd.phone?.trim()) errs.phone = "El teléfono es requerido";
+    else if (!/^\+?[\d\s\-\(\)]+$/.test(fd.phone)) errs.phone = "Formato inválido";
+
+    if (fd.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fd.email))
+      errs.email = "Formato de email inválido";
+
+    if (fd.altPhone && !/^\+?[\d\s\-\(\)]+$/.test(fd.altPhone))
+      errs.altPhone = "Formato de teléfono alternativo inválido";
+
+    if (fd.altPhone && onlyDigits(fd.altPhone) === onlyDigits(fd.phone))
+      errs.altPhone = "No puede ser igual al teléfono principal";
+
+    return errs;
+  };
+
   const validateField = (field: string, value: any) => {
-    const newErrors = { ...errors };
-
-    switch (field) {
-      case "name":
-        if (!value.trim()) {
-          newErrors.name = "El nombre es requerido";
-        } else if (value.trim().length < 2) {
-          newErrors.name = "El nombre debe tener al menos 2 caracteres";
-        } else {
-          delete newErrors.name;
-        }
-        break;
-
-      case "phone":
-        if (!value.trim()) {
-          newErrors.phone = "El teléfono es requerido";
-        } else if (!/^\+?[\d\s\-\(\)]+$/.test(value)) {
-          newErrors.phone = "Formato de teléfono inválido";
-        } else {
-          delete newErrors.phone;
-        }
-        break;
-
-      case "email":
-        if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-          newErrors.email = "Formato de email inválido";
-        } else {
-          delete newErrors.email;
-        }
-        break;
-
-      case "altPhone":
-        if (value && !/^\+?[\d\s\-\(\)]+$/.test(value)) {
-          newErrors.altPhone = "Formato de teléfono alternativo inválido";
-        } else {
-          delete newErrors.altPhone;
-        }
-        break;
-    }
-
-    setErrors(newErrors);
+    const newFd = { ...formData, [field]: value } as Cliente;
+    setErrors((prev) => ({ ...prev, ...validateAll(newFd) }));
   };
 
-  // Buscar duplicados potenciales
-  const buscarDuplicados = async (name: string, phone: string, email?: string) => {
-    if (!name.trim() && !phone.trim()) return;
-
+  const buscarDuplicados = async (phone: string, email?: string) => {
+    if (!phone.trim() && !email?.trim()) return;
     try {
-      const params = new URLSearchParams({
-        search: `${name} ${phone} ${email || ""}`.trim(),
-        detectDuplicates: "true",
-      });
+      const q = new URLSearchParams({
+        ...(phone ? { phone: onlyDigits(phone) } : {}),
+        ...(email ? { email: normalizeEmail(email)! } : {}),
+      }).toString();
 
-      if (mode === "edit" && cliente?.id) {
-        params.set("excludeId", cliente.id);
-      }
+      const url = `/api/clients/exists?${q}`; // 👈 endpoint correcto
+    console.log("EXISTS URL =>", url);
+    const r = await fetch(url);
 
-      const response = await fetch(`/api/clientes?${params}`);
-      const result = await response.json();
+    const isJson = r.headers.get("content-type")?.includes("application/json");
+    const data = isJson ? await r.json() : await r.text();
 
-      if (result.success && result.duplicates && result.duplicates.length > 0) {
-        setDuplicados(result.duplicates);
-        setShowDuplicados(true);
-      } else {
-        setDuplicados([]);
-        setShowDuplicados(false);
-      }
-    } catch (error) {
-      console.error("Error buscando duplicados:", error);
+    if (!r.ok) {
+      console.warn("EXISTS non-OK:", r.status, data);
+      setDuplicados([]);
+      setShowDuplicados(false);
+      return;
     }
-  };
 
-  // Manejar cambios en el formulario
-  const handleChange = (field: string, value: any) => {
+    if (isJson && (data as any).exists && (data as any).match) {
+      setDuplicados([{
+        id: data.match.id,
+        name: data.match.name,
+        phone: data.match.phone,
+        email: data.match.email || "",
+        similarity: 100,
+        reason: "Mismo teléfono/email",
+      }]);
+      setShowDuplicados(true);
+    } else {
+      setDuplicados([]);
+      setShowDuplicados(false);
+    }
+  } catch (e) {
+    console.error("Error buscando duplicados:", e);
+  }
+};
+
+  const handleChange = (field: keyof Cliente, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-    validateField(field, value);
+    validateField(field as string, value);
 
-    // Buscar duplicados para campos clave
-    if (["name", "phone", "email"].includes(field)) {
-      if (duplicadosTimeoutRef.current) {
-        clearTimeout(duplicadosTimeoutRef.current);
-      }
+if (field === "phone" || field === "email") {
+  if (duplicadosTimeoutRef.current) clearTimeout(duplicadosTimeoutRef.current);
+  duplicadosTimeoutRef.current = setTimeout(() => {
+    const next = { ...formData, [field]: value } as Cliente;
+    buscarDuplicados(next.phone, next.email); // 👈 sólo phone/email
+  }, 600);
+}
 
-      duplicadosTimeoutRef.current = setTimeout(() => {
-        const newFormData = { ...formData, [field]: value };
-        buscarDuplicados(newFormData.name, newFormData.phone, newFormData.email);
-      }, 1000);
-    }
-  };
-
-  // Manejar consentimientos
   const handleConsentChange = (key: string, checked: boolean) => {
     setFormData((prev) => ({
       ...prev,
-      consents: {
-        ...prev.consents,
-        [key]: checked,
-      },
+      consents: { ...(prev.consents || {}), [key]: checked },
     }));
   };
 
-  // Agregar etiqueta
   const agregarEtiqueta = (etiqueta: string) => {
-    if (etiqueta && !formData.labels.includes(etiqueta)) {
-      setFormData((prev) => ({
-        ...prev,
-        labels: [...prev.labels, etiqueta],
-      }));
+    const tag = etiqueta.trim();
+    if (tag && !formData.labels.includes(tag)) {
+      setFormData((prev) => ({ ...prev, labels: [...prev.labels, tag] }));
     }
     setNuevaEtiqueta("");
   };
 
-  // Quitar etiqueta
   const quitarEtiqueta = (etiqueta: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      labels: prev.labels.filter((l) => l !== etiqueta),
-    }));
+    setFormData((prev) => ({ ...prev, labels: prev.labels.filter((l) => l !== etiqueta) }));
   };
 
-  // Fusionar con duplicado
-  const fusionarConDuplicado = async (duplicadoId: string) => {
-    try {
-      setLoading(true);
-      const response = await fetch("/api/clientes/fusionar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          primaryId: duplicadoId,
-          secondaryData: formData,
-          mergeStrategy: "keepPrimary",
-        }),
-      });
+  const toServerPayload = (fd: Cliente) => {
+    const cleanedPhone = fd.phone.replace(/\D/g, "");
+    const cleanedAlt = fd.altPhone?.replace(/\D/g, "");
 
-      const result = await response.json();
+    return {
+      // 🔹 Obligatorios
+      name: fd.name.trim(),
+      phone: cleanedPhone,
 
-      if (result.success) {
-        showSuccess("Éxito", "Cliente fusionado correctamente");
-        onClose();
-        // Opcional: redirigir a la ficha del cliente fusionado
-      } else {
-        showError("Error", result.error || "No se pudo fusionar el cliente");
-      }
-    } catch (error) {
-      console.error("Error fusionando cliente:", error);
-      showError("Error", "Error de conexión al fusionar cliente");
-    } finally {
-      setLoading(false);
-    }
+      // 🔹 Opcionales (solo se envían si traen algo)
+      email: fd.email?.trim() ? fd.email.trim().toLowerCase() : "", // acepta "" en server
+      alt_phone: cleanedAlt && cleanedAlt.length ? cleanedAlt : undefined,
+      address: fd.address?.trim() ? fd.address.trim() : undefined,
+      contact_preference: (fd.contactPreference || "PHONE").toUpperCase(),
+      labels: fd.labels?.length ? fd.labels : undefined,
+      pickup_points: fd.pickupPoints?.trim() ? fd.pickupPoints : null, // este sí puede ir null
+      notes: fd.notes?.trim() ? fd.notes.trim() : undefined,
+      consents: {
+        marketing: !!fd.consents?.marketing,
+        notifications: !!fd.consents?.notifications,
+        dataProcessing: !!fd.consents?.dataProcessing,
+        media: !!fd.consents?.media,
+      },
+      is_active: fd.isActive ?? true,
+    };
   };
 
-  // Guardar cliente
   const handleSave = async () => {
-    // Validar todos los campos
-    validateField("name", formData.name);
-    validateField("phone", formData.phone);
-    validateField("email", formData.email);
-    validateField("altPhone", formData.altPhone);
-
-    if (Object.keys(errors).length > 0) {
-      showError("Error", "Por favor corrige los errores en el formulario");
+    const localErrors = validateAll(formData);
+    setErrors(localErrors);
+    if (Object.keys(localErrors).length) {
+      useToast().showError("Error", "Por favor corrige los errores en el formulario");
       return;
     }
 
     try {
       setLoading(true);
-
-      const clienteData = {
-        ...formData,
-        pickupPoints: formData.pickupPoints || null,
-      };
-
-      const url = mode === "edit" && cliente?.id ? `/api/clientes/${cliente.id}` : "/api/clientes";
-
+      const payload = toServerPayload(formData);
+      const url = mode === "edit" && cliente?.id ? `/api/clients/${cliente.id}` : "/api/clients";
       const method = mode === "edit" ? "PUT" : "POST";
 
-      const response = await fetch(url, {
+      const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(clienteData),
+        body: JSON.stringify(payload),
       });
 
-      const result = await response.json();
+      const isJson = res.headers.get("content-type")?.includes("application/json");
+      const data = isJson ? await res.json() : await res.text();
 
-      if (result.success) {
+      if (res.ok) {
         showSuccess("Éxito", `Cliente ${mode === "edit" ? "actualizado" : "creado"} correctamente`);
-        onSave(result.data);
+        onSave(data);
         onClose();
-      } else {
-        showError(
-          "Error",
-          result.error || `No se pudo ${mode === "edit" ? "actualizar" : "crear"} el cliente`
-        );
+        return;
       }
-    } catch (error) {
-      console.error("Error guardando cliente:", error);
+
+      if (res.status === 400 && isJson && (data as any)?.details?.fieldErrors) {
+        const fe = (data as any).details.fieldErrors as Record<string, string[]>;
+        const map: Record<string, string> = {};
+        Object.entries(fe).forEach(([k, arr]) => (map[k] = arr?.[0] ?? "Campo inválido"));
+        setErrors((prev) => ({ ...prev, ...map }));
+        console.warn("VALIDATION 400 fieldErrors =>", fe); // 👈 te lo imprime en consola
+        showError("Validación", "Revisa los campos marcados en rojo");
+        return;
+      }
+            if (res.status === 201 || res.status === 200) {
+        const data = await res.json();
+        showSuccess("Éxito", `Cliente ${mode === "edit" ? "actualizado" : "creado"} correctamente`);
+        onSave(data);
+        onClose();
+        return;
+      }
+
+      if (res.status === 409) {
+        const data = await res.json();
+        if (data?.match) {
+          setDuplicados([
+            {
+              id: data.match.id,
+              name: data.match.name,
+              phone: data.match.phone,
+              email: data.match.email,
+              similarity: 100,
+              reason: "Conflicto de duplicado",
+            },
+          ]);
+          setShowDuplicados(true);
+        }
+        showError("Duplicado", "Ya existe un cliente con ese teléfono o email");
+        return;
+      }
+
+      const err = await res.json().catch(() => ({}));
+      showError("Error", err?.error || "No se pudo guardar el cliente");
+    } catch (e) {
+      console.error(e);
       showError("Error", "Error de conexión al guardar cliente");
     } finally {
       setLoading(false);
@@ -338,7 +335,7 @@ export default function FormularioCliente({
           </button>
         </div>
 
-        {/* Alerta de duplicados */}
+        {/* Duplicados */}
         {showDuplicados && duplicados.length > 0 && (
           <div className="mx-6 mt-4 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-lg">
             <div className="flex items-start space-x-3">
@@ -348,23 +345,22 @@ export default function FormularioCliente({
                   Posibles clientes duplicados encontrados
                 </h3>
                 <div className="space-y-2">
-                  {duplicados.map((duplicado) => (
-                    <div
-                      key={duplicado.id}
-                      className="flex items-center justify-between bg-secondary-700 p-3 rounded"
-                    >
+                  {duplicados.map((d) => (
+                    <div key={d.id} className="flex items-center justify-between bg-secondary-700 p-3 rounded">
                       <div>
-                        <div className="text-sm text-white">{duplicado.name}</div>
+                        <div className="text-sm text-white">{d.name}</div>
                         <div className="text-xs text-gray-400">
-                          {duplicado.phone} {duplicado.email && `• ${duplicado.email}`}
+                          {d.phone} {d.email && `• ${d.email}`}
                         </div>
                         <div className="text-xs text-yellow-400">
-                          Similitud: {duplicado.similarity}% • {duplicado.reason}
+                          Similitud: {d.similarity}% • {d.reason}
                         </div>
                       </div>
+                      {/* Botón de fusión lo activaremos cuando implementemos /api/clients/merge */}
                       <button
-                        onClick={() => fusionarConDuplicado(duplicado.id)}
-                        className="px-3 py-1 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700 transition-colors"
+                        disabled
+                        className="px-3 py-1 bg-yellow-900/40 text-yellow-300 text-xs rounded cursor-not-allowed"
+                        title="La fusión se habilitará pronto"
                       >
                         Fusionar
                       </button>
@@ -376,7 +372,7 @@ export default function FormularioCliente({
           </div>
         )}
 
-        {/* Contenido del formulario */}
+        {/* Form */}
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Información Personal */}
@@ -387,9 +383,7 @@ export default function FormularioCliente({
               </h3>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Nombre completo *
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Nombre completo *</label>
                 <input
                   type="text"
                   value={formData.name}
@@ -403,9 +397,7 @@ export default function FormularioCliente({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Teléfono principal *
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Teléfono principal *</label>
                 <input
                   type="text"
                   value={formData.phone}
@@ -433,9 +425,7 @@ export default function FormularioCliente({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Teléfono alternativo
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Teléfono alternativo</label>
                 <input
                   type="text"
                   value={formData.altPhone || ""}
@@ -468,12 +458,10 @@ export default function FormularioCliente({
               </h3>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Preferencia de contacto
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Preferencia de contacto</label>
                 <select
                   value={formData.contactPreference}
-                  onChange={(e) => handleChange("contactPreference", e.target.value)}
+                  onChange={(e) => handleChange("contactPreference", e.target.value as Cliente["contactPreference"])}
                   className="w-full px-3 py-2 bg-secondary-700 border border-secondary-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {CONTACT_PREFERENCES.map((pref) => (
@@ -493,10 +481,7 @@ export default function FormularioCliente({
                       className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30"
                     >
                       {label}
-                      <button
-                        onClick={() => quitarEtiqueta(label)}
-                        className="ml-1 text-blue-300 hover:text-blue-200"
-                      >
+                      <button onClick={() => quitarEtiqueta(label)} className="ml-1 text-blue-300 hover:text-blue-200">
                         <XMarkIcon className="h-3 w-3" />
                       </button>
                     </span>
@@ -524,37 +509,31 @@ export default function FormularioCliente({
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {ETIQUETAS_PREDEFINIDAS.filter((e) => !formData.labels.includes(e)).map(
-                    (etiqueta) => (
-                      <button
-                        key={etiqueta}
-                        onClick={() => agregarEtiqueta(etiqueta)}
-                        className="px-2 py-1 text-xs bg-secondary-700 text-gray-300 rounded hover:bg-secondary-600 transition-colors"
-                      >
-                        {etiqueta}
-                      </button>
-                    )
-                  )}
+                  {ETIQUETAS_PREDEFINIDAS.filter((e) => !formData.labels.includes(e)).map((etiqueta) => (
+                    <button
+                      key={etiqueta}
+                      onClick={() => agregarEtiqueta(etiqueta)}
+                      className="px-2 py-1 text-xs bg-secondary-700 text-gray-300 rounded hover:bg-secondary-600 transition-colors"
+                    >
+                      {etiqueta}
+                    </button>
+                  ))}
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Puntos de recogida/entrega
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Puntos de recogida/entrega</label>
                 <textarea
                   value={formData.pickupPoints || ""}
                   onChange={(e) => handleChange("pickupPoints", e.target.value)}
                   rows={2}
                   className="w-full px-3 py-2 bg-secondary-700 border border-secondary-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Direcciones alternativas para recogida o entrega"
+                  placeholder="Direcciones alternativas para recogida o entrega (una por línea)"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Notas adicionales
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Notas adicionales</label>
                 <textarea
                   value={formData.notes || ""}
                   onChange={(e) => handleChange("notes", e.target.value)}
@@ -566,19 +545,17 @@ export default function FormularioCliente({
 
               {/* Consentimientos */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-3">
-                  Consentimientos
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-3">Consentimientos</label>
                 <div className="space-y-2">
-                  {CONSENTIMIENTOS.map((consent) => (
-                    <label key={consent.key} className="flex items-start space-x-3">
+                  {CONSENTIMIENTOS.map((c) => (
+                    <label key={c.key} className="flex items-start space-x-3">
                       <input
                         type="checkbox"
-                        checked={formData.consents?.[consent.key] || false}
-                        onChange={(e) => handleConsentChange(consent.key, e.target.checked)}
+                        checked={!!formData.consents?.[c.key]}
+                        onChange={(e) => handleConsentChange(c.key, e.target.checked)}
                         className="mt-0.5 h-4 w-4 text-blue-600 bg-secondary-700 border-secondary-600 rounded focus:ring-blue-500 focus:ring-2"
                       />
-                      <span className="text-sm text-gray-300 leading-5">{consent.label}</span>
+                      <span className="text-sm text-gray-300 leading-5">{c.label}</span>
                     </label>
                   ))}
                 </div>
@@ -600,10 +577,7 @@ export default function FormularioCliente({
 
         {/* Footer */}
         <div className="flex items-center justify-end space-x-3 p-6 border-t border-secondary-700">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
-          >
+          <button onClick={onClose} className="px-4 py-2 text-gray-400 hover:text-white transition-colors">
             Cancelar
           </button>
           <button

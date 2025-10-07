@@ -15,8 +15,9 @@ import {
   UserGroupIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+/* ================== Tipos ================== */
 interface Cliente {
   id: string;
   name: string;
@@ -85,6 +86,76 @@ interface FusionData {
   };
 }
 
+/* ================== Utils de normalización ================== */
+
+const parseString = (s: unknown, fallback = ""): string =>
+  typeof s === "string" ? s : s == null ? fallback : String(s);
+
+const parseNumber = (n: unknown, fallback = 0): number =>
+  typeof n === "number" ? n : Number.isFinite(Number(n)) ? Number(n) : fallback;
+
+const toStringArray = (val: unknown): string[] => {
+  if (Array.isArray(val)) return val.filter(Boolean).map(String);
+  if (typeof val === "string")
+    return val
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  return [];
+};
+
+const toArray = <T,>(val: unknown, mapItem: (x: any) => T): T[] => {
+  if (!val) return [];
+  const a = Array.isArray(val) ? val : [];
+  return a.map(mapItem).filter(Boolean);
+};
+
+/** Normaliza un cliente “lite” para la UI de fusión (lo que necesitamos aquí) */
+const mapApiToClienteLite = (data: any): Cliente => {
+  const vehicles = toArray(data.vehicles ?? data.vehiculos, (v: any) => ({
+    id: parseString(v.id),
+    brand: parseString(v.brand),
+    model: parseString(v.model),
+    year: parseNumber(v.year),
+    licensePlate: v.licensePlate ?? v.placa ?? undefined,
+    trackingCode: parseString(v.trackingCode ?? v.codigo_seguimiento ?? v.code ?? ""),
+  }));
+
+  const appointments = toArray(data.appointments ?? data.ordenes, (a: any) => ({
+    id: parseString(a.id),
+    scheduledAt: parseString(a.scheduledAt ?? a.fecha ?? a.createdAt ?? a.created_at),
+    status: parseString(a.status ?? "SCHEDULED"),
+    service: a.service ?? a.servicio ?? undefined,
+  }));
+
+  const quotes = toArray(data.quotes ?? data.cotizaciones, (q: any) => ({
+    id: parseString(q.id),
+    status: parseString(q.status ?? "PENDING"),
+    total: parseNumber(q.total, 0),
+    createdAt: parseString(q.createdAt ?? q.created_at ?? new Date().toISOString()),
+  }));
+
+  return {
+    id: parseString(data.id),
+    name: parseString(data.name),
+    phone: parseString(data.phone),
+    email: data.email ?? undefined,
+    altPhone: data.alt_phone ?? data.altPhone ?? undefined,
+    address: data.address ?? undefined,
+    contactPreference: parseString(data.contact_preference ?? data.contactPreference ?? "PHONE"),
+    labels: toStringArray(data.labels),
+    notes: data.notes ?? undefined,
+    isActive: Boolean(data.is_active ?? data.isActive ?? true),
+    createdAt: parseString(data.created_at ?? data.createdAt ?? new Date().toISOString()),
+    updatedAt: parseString(data.updated_at ?? data.updatedAt ?? new Date().toISOString()),
+    vehicles,
+    appointments,
+    quotes,
+  };
+};
+
+/* ================== Componente ================== */
+
 export default function FusionDuplicados({
   isOpen,
   onClose,
@@ -109,36 +180,40 @@ export default function FusionDuplicados({
     },
   });
 
-  // Inicializar con cliente inicial si se proporciona
+  // Cuando llega un cliente inicial, lo normalizamos y vamos a selección
   useEffect(() => {
     if (clienteInicial) {
-      setFusionData((prev) => ({
-        ...prev,
-        clientePrincipal: clienteInicial,
-      }));
+      const norm = mapApiToClienteLite(clienteInicial);
+      setFusionData((prev) => ({ ...prev, clientePrincipal: norm }));
       setPaso("seleccion");
     } else {
       setPaso("busqueda");
     }
   }, [clienteInicial, isOpen]);
 
+  const excludeId = useMemo(() => fusionData.clientePrincipal?.id, [fusionData.clientePrincipal]);
+
   // Buscar duplicados potenciales
   const buscarDuplicados = async () => {
-    if (!searchTerm.trim()) return;
+    if (!searchTerm.trim() && !excludeId) return;
 
     try {
       setLoading(true);
       const params = new URLSearchParams({
-        search: searchTerm,
         detectDuplicates: "true",
         limit: "20",
       });
 
-      const response = await fetch(`/api/clientes?${params}`);
+      // si hay texto, úsalo
+      if (searchTerm.trim()) params.set("search", searchTerm.trim());
+      // si ya hay principal, exclúyelo (para no sugerirte a ti mismo)
+      if (excludeId) params.set("excludeId", excludeId);
+
+      const response = await fetch(`/api/clients?${params.toString()}`);
       const result = await response.json();
 
-      if (result.success && result.duplicates) {
-        setDuplicados(result.duplicates);
+      if (response.ok && result?.duplicates) {
+        setDuplicados(result.duplicates as DuplicadoPotencial[]);
       } else {
         setDuplicados([]);
       }
@@ -150,25 +225,24 @@ export default function FusionDuplicados({
     }
   };
 
-  // Cargar detalles completos de un cliente
+  // Cargar detalles completos (normalizados) de un cliente
   const cargarDetallesCliente = async (clienteId: string) => {
     if (clientesDetallados[clienteId]) return clientesDetallados[clienteId];
 
     try {
-      const response = await fetch(`/api/clientes/${clienteId}`);
+      const response = await fetch(`/api/clients/${clienteId}`);
       const result = await response.json();
 
-      if (result.success) {
-        setClientesDetallados((prev) => ({
-          ...prev,
-          [clienteId]: result.data,
-        }));
-        return result.data;
-      }
+      if (!response.ok || !result?.data) throw new Error(result?.error || "Error de API");
+
+      const norm = mapApiToClienteLite(result.data);
+      setClientesDetallados((prev) => ({ ...prev, [clienteId]: norm }));
+      return norm;
     } catch (error) {
       console.error("Error cargando cliente:", error);
+      showError("Error", "No se pudo cargar el cliente seleccionado");
+      return null;
     }
-    return null;
   };
 
   // Seleccionar cliente para fusión
@@ -181,22 +255,21 @@ export default function FusionDuplicados({
       [esPrincipal ? "clientePrincipal" : "clienteSecundario"]: cliente,
     }));
 
-    if (esPrincipal && !fusionData.clienteSecundario) {
-      // Si seleccionamos principal y no hay secundario, buscar automáticamente duplicados
-      buscarDuplicados();
+    if (esPrincipal) {
+      // si elegimos principal, pasa a selección y sugiere duplicados
+      setPaso("seleccion");
+      setTimeout(() => buscarDuplicados(), 0);
     }
   };
 
-  // Proceder al siguiente paso
+  // Siguiente paso
   const siguientePaso = () => {
     switch (paso) {
       case "busqueda":
         if (fusionData.clientePrincipal) setPaso("seleccion");
         break;
       case "seleccion":
-        if (fusionData.clientePrincipal && fusionData.clienteSecundario) {
-          setPaso("revision");
-        }
+        if (fusionData.clientePrincipal && fusionData.clienteSecundario) setPaso("revision");
         break;
       case "revision":
         setPaso("confirmacion");
@@ -207,15 +280,14 @@ export default function FusionDuplicados({
     }
   };
 
-  // Ejecutar la fusión
+  // Ejecutar fusión
   const ejecutarFusion = async () => {
     if (!fusionData.clientePrincipal || !fusionData.clienteSecundario) return;
 
     try {
       setLoading(true);
-      setPaso("completado");
 
-      const response = await fetch("/api/clientes/fusionar", {
+      const response = await fetch("/api/clients/fusionar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -228,15 +300,18 @@ export default function FusionDuplicados({
 
       const result = await response.json();
 
-      if (result.success) {
+      if (response.ok && result.success) {
+        setPaso("completado");
         showSuccess("Éxito", "Clientes fusionados correctamente");
         onFusionCompleta?.();
+        // Cierra automáticamente luego de un breve lapso
         setTimeout(() => {
           onClose();
           resetForm();
-        }, 2000);
+        }, 1500);
       } else {
-        showError("Error", result.error || "No se pudo completar la fusión");
+        showError("Error", result?.error || "No se pudo completar la fusión");
+        // vuelve a confirmación para reintentar o cambiar opciones
         setPaso("confirmacion");
       }
     } catch (error) {
@@ -248,7 +323,7 @@ export default function FusionDuplicados({
     }
   };
 
-  // Resetear formulario
+  // Reset
   const resetForm = () => {
     setPaso("busqueda");
     setSearchTerm("");
@@ -258,25 +333,15 @@ export default function FusionDuplicados({
       clientePrincipal: null,
       clienteSecundario: null,
       estrategia: "keepPrimary",
-      transferirDatos: {
-        vehiculos: true,
-        citas: true,
-        cotizaciones: true,
-        notas: true,
-      },
+      transferirDatos: { vehiculos: true, citas: true, cotizaciones: true, notas: true },
     });
   };
 
-  // Formatear fecha
-  const formatearFecha = (fecha: string) => {
-    return new Date(fecha).toLocaleDateString("es-GT", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
+  // Formateo fecha
+  const formatearFecha = (fecha: string) =>
+    new Date(fecha).toLocaleDateString("es-GT", { year: "numeric", month: "short", day: "numeric" });
 
-  // Renderizar tarjeta de cliente
+  // Card de cliente
   const renderClienteCard = (cliente: Cliente, tipo: "principal" | "secundario") => (
     <div
       className={`bg-secondary-700 rounded-lg p-6 border-2 ${
@@ -290,10 +355,10 @@ export default function FusionDuplicados({
               tipo === "principal" ? "bg-blue-500" : "bg-yellow-500"
             } flex items-center justify-center text-white font-semibold`}
           >
-            {cliente.name.charAt(0).toUpperCase()}
+            {cliente.name?.charAt(0)?.toUpperCase() || "?"}
           </div>
           <div>
-            <h3 className="text-white font-medium">{cliente.name}</h3>
+            <h3 className="text-white font-medium">{cliente.name || "—"}</h3>
             <p className="text-sm text-gray-400">
               {tipo === "principal" ? "Cliente Principal" : "Cliente a Fusionar"}
             </p>
@@ -301,9 +366,7 @@ export default function FusionDuplicados({
         </div>
         <span
           className={`px-2 py-1 rounded text-xs font-medium ${
-            tipo === "principal"
-              ? "bg-blue-500/20 text-blue-400"
-              : "bg-yellow-500/20 text-yellow-400"
+            tipo === "principal" ? "bg-blue-500/20 text-blue-400" : "bg-yellow-500/20 text-yellow-400"
           }`}
         >
           {tipo === "principal" ? "Principal" : "Secundario"}
@@ -313,7 +376,7 @@ export default function FusionDuplicados({
       <div className="space-y-2 text-sm">
         <div className="flex items-center space-x-2">
           <PhoneIcon className="h-4 w-4 text-gray-400" />
-          <span className="text-gray-300">{cliente.phone}</span>
+          <span className="text-gray-300">{cliente.phone || "—"}</span>
         </div>
         {cliente.email && (
           <div className="flex items-center space-x-2">
@@ -340,9 +403,7 @@ export default function FusionDuplicados({
             <div className="flex items-center justify-center mb-1">
               <CalendarDaysIcon className="h-4 w-4 text-green-400" />
             </div>
-            <div className="text-lg font-semibold text-white">
-              {cliente.appointments?.length || 0}
-            </div>
+            <div className="text-lg font-semibold text-white">{cliente.appointments?.length || 0}</div>
             <div className="text-xs text-gray-400">Citas</div>
           </div>
           <div>
@@ -388,7 +449,7 @@ export default function FusionDuplicados({
           </button>
         </div>
 
-        {/* Indicador de progreso */}
+        {/* Progreso */}
         <div className="px-6 py-4 border-b border-secondary-700">
           <div className="flex items-center justify-between">
             {["busqueda", "seleccion", "revision", "confirmacion", "completado"].map(
@@ -398,14 +459,7 @@ export default function FusionDuplicados({
                     className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                       paso === stepName
                         ? "bg-blue-500 text-white"
-                        : index <
-                          [
-                            "busqueda",
-                            "seleccion",
-                            "revision",
-                            "confirmacion",
-                            "completado",
-                          ].indexOf(paso)
+                        : index < ["busqueda", "seleccion", "revision", "confirmacion", "completado"].indexOf(paso)
                         ? "bg-green-500 text-white"
                         : "bg-secondary-600 text-gray-400"
                     }`}
@@ -415,10 +469,7 @@ export default function FusionDuplicados({
                   {index < 4 && (
                     <div
                       className={`w-full h-0.5 mx-2 ${
-                        index <
-                        ["busqueda", "seleccion", "revision", "confirmacion", "completado"].indexOf(
-                          paso
-                        )
+                        index < ["busqueda", "seleccion", "revision", "confirmacion", "completado"].indexOf(paso)
                           ? "bg-green-500"
                           : "bg-secondary-600"
                       }`}
@@ -438,14 +489,12 @@ export default function FusionDuplicados({
               <div className="text-center">
                 <DocumentDuplicateIcon className="mx-auto h-16 w-16 text-blue-500 mb-4" />
                 <h3 className="text-lg font-medium text-white mb-2">Buscar Clientes Duplicados</h3>
-                <p className="text-gray-400">
-                  Busca clientes por nombre, teléfono o email para identificar duplicados
-                </p>
+                <p className="text-gray-400">Busca clientes por nombre, teléfono o email para identificar duplicados</p>
               </div>
 
               <div className="max-w-md mx-auto">
                 <div className="relative">
-                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                   <input
                     type="text"
                     placeholder="Buscar clientes..."
@@ -457,7 +506,7 @@ export default function FusionDuplicados({
                 </div>
                 <button
                   onClick={buscarDuplicados}
-                  disabled={!searchTerm.trim() || loading}
+                  disabled={(!searchTerm.trim() && !excludeId) || loading}
                   className="mt-3 w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {loading ? "Buscando..." : "Buscar Duplicados"}
@@ -472,9 +521,7 @@ export default function FusionDuplicados({
                         <div className="flex-1">
                           <h4 className="text-white font-medium">{duplicado.name}</h4>
                           <p className="text-sm text-gray-400">{duplicado.phone}</p>
-                          {duplicado.email && (
-                            <p className="text-sm text-gray-400">{duplicado.email}</p>
-                          )}
+                          {duplicado.email && <p className="text-sm text-gray-400">{duplicado.email}</p>}
                         </div>
                         <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded text-xs font-medium">
                           {duplicado.similarity}% similar
@@ -491,7 +538,7 @@ export default function FusionDuplicados({
 
                       <button
                         onClick={() => seleccionarCliente(duplicado.id, true)}
-                        className="w-full px-3 py-1 bg-blue-600 text-白 text-sm rounded hover:bg-blue-700 transition-colors"
+                        className="w-full px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
                       >
                         Seleccionar como Principal
                       </button>
@@ -506,16 +553,12 @@ export default function FusionDuplicados({
           {paso === "seleccion" && (
             <div className="space-y-6">
               <div className="text-center">
-                <h3 className="text-lg font-medium text-white mb-2">
-                  Seleccionar Cliente Secundario
-                </h3>
+                <h3 className="text-lg font-medium text-white mb-2">Seleccionar Cliente Secundario</h3>
                 <p className="text-gray-400">Selecciona el segundo cliente que deseas fusionar</p>
               </div>
 
               {fusionData.clientePrincipal && (
-                <div className="max-w-md mx-auto">
-                  {renderClienteCard(fusionData.clientePrincipal, "principal")}
-                </div>
+                <div className="max-w-md mx-auto">{renderClienteCard(fusionData.clientePrincipal, "principal")}</div>
               )}
 
               {duplicados.length > 0 && (
@@ -530,9 +573,7 @@ export default function FusionDuplicados({
                             <div className="flex-1">
                               <h4 className="text-white font-medium">{duplicado.name}</h4>
                               <p className="text-sm text-gray-400">{duplicado.phone}</p>
-                              {duplicado.email && (
-                                <p className="text-sm text-gray-400">{duplicado.email}</p>
-                              )}
+                              {duplicado.email && <p className="text-sm text-gray-400">{duplicado.email}</p>}
                             </div>
                             <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded text-xs font-medium">
                               {duplicado.similarity}% similar
@@ -558,9 +599,7 @@ export default function FusionDuplicados({
             <div className="space-y-6">
               <div className="text-center">
                 <h3 className="text-lg font-medium text-white mb-2">Revisar Fusión</h3>
-                <p className="text-gray-400">
-                  Revisa los datos que se fusionarán y configura las opciones
-                </p>
+                <p className="text-gray-400">Revisa los datos que se fusionarán y configura las opciones</p>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -576,13 +615,11 @@ export default function FusionDuplicados({
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Estrategia de fusión
-                    </label>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Estrategia de fusión</label>
                     <select
                       value={fusionData.estrategia}
                       onChange={(e) =>
-                        setFusionData((prev) => ({ ...prev, estrategia: e.target.value as any }))
+                        setFusionData((prev) => ({ ...prev, estrategia: e.target.value as FusionData["estrategia"] }))
                       }
                       className="w-full px-3 py-2 bg-secondary-600 border border-secondary-500 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
@@ -593,9 +630,7 @@ export default function FusionDuplicados({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Datos a transferir
-                    </label>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Datos a transferir</label>
                     <div className="space-y-2">
                       {Object.entries(fusionData.transferirDatos).map(([key, value]) => (
                         <label key={key} className="flex items-center space-x-3">
@@ -605,10 +640,7 @@ export default function FusionDuplicados({
                             onChange={(e) =>
                               setFusionData((prev) => ({
                                 ...prev,
-                                transferirDatos: {
-                                  ...prev.transferirDatos,
-                                  [key]: e.target.checked,
-                                },
+                                transferirDatos: { ...prev.transferirDatos, [key]: e.target.checked },
                               }))
                             }
                             className="h-4 w-4 text-blue-600 bg-secondary-600 border-secondary-500 rounded focus:ring-blue-500"
@@ -630,8 +662,8 @@ export default function FusionDuplicados({
                 <ExclamationTriangleIcon className="mx-auto h-16 w-16 text-yellow-500 mb-4" />
                 <h3 className="text-lg font-medium text-white mb-2">Confirmar Fusión</h3>
                 <p className="text-gray-400">
-                  Esta acción no se puede deshacer. El cliente secundario será eliminado y sus datos
-                  transferidos al principal.
+                  Esta acción no se puede deshacer. El cliente secundario será eliminado y sus datos transferidos al
+                  principal.
                 </p>
               </div>
 
@@ -642,8 +674,7 @@ export default function FusionDuplicados({
                     <p className="font-medium mb-1">Advertencia:</p>
                     <ul className="list-disc list-inside space-y-1">
                       <li>
-                        El cliente &ldquo;{fusionData.clienteSecundario?.name}&rdquo; será eliminado
-                        permanentemente
+                        El cliente &ldquo;{fusionData.clienteSecundario?.name}&rdquo; será eliminado permanentemente
                       </li>
                       <li>Los datos seleccionados se transferirán al cliente principal</li>
                       <li>Esta operación quedará registrada en el log de auditoría</li>
@@ -662,8 +693,7 @@ export default function FusionDuplicados({
               <div>
                 <h3 className="text-lg font-medium text-white mb-2">¡Fusión Completada!</h3>
                 <p className="text-gray-400">
-                  Los clientes han sido fusionados exitosamente. La operación ha sido registrada en
-                  el log de auditoría.
+                  Los clientes han sido fusionados exitosamente. La operación ha sido registrada en el log de auditoría.
                 </p>
               </div>
 

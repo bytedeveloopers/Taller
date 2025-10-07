@@ -40,9 +40,18 @@ const ToastNotification = ({ toasts, removeToast }: ToastNotificationProps) => {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-[60] space-y-2">
-      {toasts.map((toast) => (
-        <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
+    <div className="fixed top-4 right-4 z-[60] space-y-3 max-w-sm">
+      {toasts.map((toast, index) => (
+        <div
+          key={toast.id}
+          style={{
+            transform: `translateY(${index * 4}px)`,
+            zIndex: 60 - index,
+          }}
+          className="transition-transform duration-300 ease-out"
+        >
+          <ToastItem toast={toast} onClose={() => removeToast(toast.id)} />
+        </div>
       ))}
     </div>
   );
@@ -50,14 +59,18 @@ const ToastNotification = ({ toasts, removeToast }: ToastNotificationProps) => {
 
 const ToastItem = ({ toast, onClose }: { toast: Toast; onClose: () => void }) => {
   const [isVisible, setIsVisible] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
 
   useEffect(() => {
-    setTimeout(() => setIsVisible(true), 100);
+    // Animación de entrada con delay suave
+    const timer = setTimeout(() => setIsVisible(true), 50);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleClose = () => {
+    setIsExiting(true);
     setIsVisible(false);
-    setTimeout(onClose, 300);
+    setTimeout(onClose, 400);
   };
 
   const getToastStyles = () => {
@@ -106,22 +119,39 @@ const ToastItem = ({ toast, onClose }: { toast: Toast; onClose: () => void }) =>
   return (
     <div
       className={`
-        transform transition-all duration-300 ease-in-out
-        ${isVisible ? "translate-x-0 opacity-100 scale-100" : "translate-x-full opacity-0 scale-95"}
+        transform transition-all duration-500 ease-out
+        ${
+          isExiting
+            ? "animate-toast-out"
+            : isVisible
+            ? "animate-toast-in opacity-100"
+            : "translate-x-full translate-y-2 opacity-0 scale-95"
+        }
         ${styles.bg} ${styles.border} border-2
         rounded-xl shadow-2xl backdrop-blur-sm
         p-4 min-w-[320px] max-w-md
         relative overflow-hidden
+        hover:scale-105 hover:shadow-3xl hover:animate-glow-pulse
+        cursor-pointer group
       `}
+      onMouseEnter={() => !isExiting && setIsVisible(true)}
+      onClick={() => !isExiting && handleClose()}
     >
-      {/* Efecto de brillo */}
+      {/* Efectos de brillo y animación */}
       <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent opacity-50"></div>
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -skew-x-12 translate-x-[-100%] group-hover:translate-x-[200%] transition-transform duration-1000 ease-out"></div>
+
+      {/* Ondas de fondo */}
+      <div className="absolute -inset-1 bg-gradient-to-r from-white/20 to-transparent rounded-xl blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
 
       {/* Contenido */}
       <div className="relative z-10 flex items-start space-x-3">
-        {/* Icono */}
-        <div className="flex-shrink-0">
-          <Icon className={`h-6 w-6 ${styles.iconColor}`} />
+        {/* Icono con animación */}
+        <div className="flex-shrink-0 relative">
+          <Icon className={`h-6 w-6 ${styles.iconColor} animate-pulse-soft`} />
+          {toast.type === "success" && (
+            <div className="absolute inset-0 rounded-full bg-white/20 animate-ping"></div>
+          )}
         </div>
 
         {/* Contenido del mensaje */}
@@ -132,78 +162,207 @@ const ToastItem = ({ toast, onClose }: { toast: Toast; onClose: () => void }) =>
           )}
         </div>
 
-        {/* Botón de cerrar */}
+        {/* Botón de cerrar mejorado */}
         <button
           onClick={handleClose}
-          className="flex-shrink-0 p-1 hover:bg-white/20 rounded-lg transition-colors"
+          className="flex-shrink-0 p-1.5 hover:bg-white/30 rounded-full transition-all duration-200 hover:scale-110 hover:rotate-90 group/close"
+          title="Cerrar notificación"
         >
-          <XMarkIcon className="h-4 w-4 text-white/80" />
+          <XMarkIcon className="h-4 w-4 text-white/80 group-hover/close:text-white transition-colors" />
         </button>
       </div>
 
-      {/* Barra de progreso (opcional) */}
+      {/* Barra de progreso mejorada */}
       {toast.duration && toast.duration > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+        <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/20 rounded-b-xl overflow-hidden">
           <div
-            className="h-full bg-white/40 transition-all ease-linear"
+            className="h-full bg-gradient-to-r from-white/60 to-white/40 shadow-sm"
             style={{
-              animation: `toast-progress ${toast.duration}ms linear forwards`,
+              animation: `toast-progress ${toast.duration}ms ease-out forwards`,
             }}
           />
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
         </div>
       )}
 
       <style jsx>{`
         @keyframes toast-progress {
-          from {
+          0% {
             width: 100%;
+            opacity: 1;
           }
-          to {
+          90% {
+            opacity: 1;
+          }
+          100% {
             width: 0%;
+            opacity: 0.5;
           }
+        }
+
+        @keyframes shimmer {
+          0% {
+            transform: translateX(-100%);
+          }
+          100% {
+            transform: translateX(200%);
+          }
+        }
+
+        @keyframes pulse-soft {
+          0%,
+          100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 0.8;
+            transform: scale(1.05);
+          }
+        }
+
+        .animate-shimmer {
+          animation: shimmer 2s infinite;
+        }
+
+        .animate-pulse-soft {
+          animation: pulse-soft 2s infinite;
         }
       `}</style>
     </div>
   );
 };
 
-// Hook personalizado para manejar toasts
+// Estado global para los toasts - SOLUCIÓN A MÚLTIPLES TOASTS
+let globalToasts: Toast[] = [];
+let globalListeners: Array<(toasts: Toast[]) => void> = [];
+
+// Funciones para manejar el estado global
+const addGlobalToast = (toast: Omit<Toast, "id">) => {
+  const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const newToast = { ...toast, id };
+
+  // Limitar a máximo 3 toasts a la vez para evitar solapamiento
+  globalToasts = [...globalToasts.slice(-2), newToast];
+
+  // Notificar a todos los listeners
+  globalListeners.forEach((listener) => listener([...globalToasts]));
+};
+
+const removeGlobalToast = (id: string) => {
+  globalToasts = globalToasts.filter((toast) => toast.id !== id);
+  globalListeners.forEach((listener) => listener([...globalToasts]));
+};
+
+const clearAllToasts = () => {
+  globalToasts = [];
+  globalListeners.forEach((listener) => listener([]));
+};
+
+const replaceToast = (toast: Omit<Toast, "id">, replaceId?: string) => {
+  const id = replaceId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const newToast = { ...toast, id };
+
+  // Si hay un ID específico, reemplazar ese toast
+  if (replaceId) {
+    const existingIndex = globalToasts.findIndex((t) => t.id === replaceId);
+    if (existingIndex !== -1) {
+      globalToasts[existingIndex] = newToast;
+    } else {
+      globalToasts = [...globalToasts.slice(-2), newToast];
+    }
+  } else {
+    // Comportamiento normal
+    globalToasts = [...globalToasts.slice(-2), newToast];
+  }
+
+  globalListeners.forEach((listener) => listener([...globalToasts]));
+};
+
+// Hook personalizado para manejar toasts globales
 export const useToast = () => {
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [toasts, setToasts] = useState<Toast[]>([...globalToasts]);
 
-  const addToast = (toast: Omit<Toast, "id">) => {
-    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    setToasts((prev) => [...prev, { ...toast, id }]);
-  };
+  useEffect(() => {
+    // Suscribirse a cambios globales
+    const listener = (newToasts: Toast[]) => {
+      setToasts(newToasts);
+    };
 
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  };
+    globalListeners.push(listener);
+
+    // Cleanup al desmontar
+    return () => {
+      globalListeners = globalListeners.filter((l) => l !== listener);
+    };
+  }, []);
 
   const showSuccess = (title: string, message?: string, duration?: number) => {
-    addToast({ type: "success", title, message, duration });
+    addGlobalToast({ type: "success", title, message, duration });
   };
 
   const showError = (title: string, message?: string, duration?: number) => {
-    addToast({ type: "error", title, message, duration });
+    addGlobalToast({ type: "error", title, message, duration });
   };
 
   const showWarning = (title: string, message?: string, duration?: number) => {
-    addToast({ type: "warning", title, message, duration });
+    addGlobalToast({ type: "warning", title, message, duration });
   };
 
   const showInfo = (title: string, message?: string, duration?: number) => {
-    addToast({ type: "info", title, message, duration });
+    addGlobalToast({ type: "info", title, message, duration });
+  };
+
+  // Funciones de reemplazo para acciones administrativas
+  const showSuccessReplace = (
+    title: string,
+    message?: string,
+    duration?: number,
+    id = "admin-action"
+  ) => {
+    replaceToast({ type: "success", title, message, duration }, id);
+  };
+
+  const showErrorReplace = (
+    title: string,
+    message?: string,
+    duration?: number,
+    id = "admin-action"
+  ) => {
+    replaceToast({ type: "error", title, message, duration }, id);
+  };
+
+  const showWarningReplace = (
+    title: string,
+    message?: string,
+    duration?: number,
+    id = "admin-action"
+  ) => {
+    replaceToast({ type: "warning", title, message, duration }, id);
+  };
+
+  const showInfoReplace = (
+    title: string,
+    message?: string,
+    duration?: number,
+    id = "admin-action"
+  ) => {
+    replaceToast({ type: "info", title, message, duration }, id);
   };
 
   return {
     toasts,
-    removeToast,
+    removeToast: removeGlobalToast,
     showSuccess,
     showError,
     showWarning,
     showInfo,
-    ToastContainer: () => <ToastNotification toasts={toasts} removeToast={removeToast} />,
+    showSuccessReplace,
+    showErrorReplace,
+    showWarningReplace,
+    showInfoReplace,
+    clearAll: clearAllToasts,
+    ToastContainer: () => <ToastNotification toasts={toasts} removeToast={removeGlobalToast} />,
   };
 };
 

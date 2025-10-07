@@ -51,7 +51,7 @@ export default function AltaRapidaVehiculo({ isOpen, onClose, onSave }: Props) {
 
   const cargarClientes = async () => {
     try {
-      const response = await fetch(`/api/clientes?search=${busquedaCliente}&limit=20`);
+      const response = await fetch(`/api/clients?search=${busquedaCliente}&limit=20`);
       const result = await response.json();
       if (result.success) {
         setClientes(result.data);

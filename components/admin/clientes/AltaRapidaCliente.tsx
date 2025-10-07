@@ -122,7 +122,7 @@ export default function AltaRapidaCliente({
         limit: "5",
       });
 
-      const response = await fetch(`/api/clientes?${params}`);
+      const response = await fetch(`/api/clients?${params}`);
       const result = await response.json();
 
       if (result.success && result.duplicates && result.duplicates.length > 0) {
@@ -192,7 +192,7 @@ export default function AltaRapidaCliente({
         notes: "Cliente creado mediante alta rápida desde recepción",
       };
 
-      const response = await fetch("/api/clientes", {
+      const response = await fetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(clienteData),

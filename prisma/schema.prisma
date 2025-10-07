@@ -109,3 +109,35 @@ model TecnicoNota {
   @@index([tecnicoId])
   @@index([authorId])
 }
+
+model Client {
+  id                 String    @id @default(uuid())
+
+  // ================= Información Personal =================
+  name               String
+  phone              String    @unique // Asumimos que el teléfono es único
+  email              String?   @unique // Asumimos que el email es único (opcional)
+  alt_phone          String?   @map("altPhone") // Alternativo: si usas camelCase en la DB, omite @map
+  address            String?
+
+  // ================= Preferencias y Configuración =================
+  contact_preference String    @map("contactPreference") // 'PHONE', 'WHATSAPP', 'EMAIL'
+  labels             String? // Etiquetas separadas por comas (ej: "VIP,FLOTA")
+  notes              String?
+  pickup_points      String?   @map("pickupPoints") // Puntos de recogida
+
+  // ================= Consents y Estado =================
+  consents           String? // JSON de los consentimientos (ej: {"marketing": true, "sms": false})
+  is_active          Boolean   @default(true) @map("isActive") // Cliente activo
+
+  // ================= Tiempos =================
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  // ================= Relaciones (Opcional) =================
+  // job_orders       JobOrder[] // Relación con órdenes de trabajo
+  // vehicles         Vehicle[]  // Relación con vehículos
+
+  // Puedes usar @@map para renombrar la tabla si es necesario
+  @@map("Client")
+}

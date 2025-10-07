@@ -114,7 +114,7 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
 
   const cargarClientes = async () => {
     try {
-      const response = await fetch(`/api/clientes?search=${busquedaCliente}&limit=50`);
+      const response = await fetch(`/api/clients?search=${busquedaCliente}&limit=50`);
       const result = await response.json();
       if (result.success) {
         setClientes(result.data);

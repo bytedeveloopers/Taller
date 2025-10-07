@@ -1,3 +1,4 @@
+// src/pages/api/admin/tecnicos/index.ts
 import { prisma } from "@/lib/prisma";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { z } from "zod";
@@ -23,7 +24,7 @@ const CreateSchema = z.object({
   carga: z.coerce.number().int().min(0).optional(),
   horario_inicio: z.string().optional(),
   horario_fin: z.string().optional(),
-  notas: z.string().optional(), // ⬅️ crea notas
+  notas: z.string().optional(),
   is_active: z.boolean().optional(),
   must_change_password: z.boolean().optional(),
   password: z.string().optional(),
@@ -33,16 +34,15 @@ const CreateSchema = z.object({
 /* ===== Helpers ===== */
 function toArray(v: any): string[] {
   if (!v) return [];
-  if (Array.isArray(v)) return v.map(String);
+  if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
   const s = String(v).trim();
   if (!s) return [];
   try {
     const p = JSON.parse(s);
-    if (Array.isArray(p)) return p.map(String);
+    if (Array.isArray(p)) return p.map((x) => String(x).trim()).filter(Boolean);
   } catch {}
   return s.split(",").map((t) => t.trim()).filter(Boolean);
 }
-
 function hhmm(v?: string) {
   if (!v) return undefined;
   const m = v.match(/^(\d{1,2}):(\d{2})$/);
@@ -64,12 +64,64 @@ function toLocalYmd(date: Date): string {
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 10);
 }
+function pctCarga(capacidad: number, carga: number) {
+  const cap = Math.max(1, Number(capacidad) || 1);
+  const cur = Math.max(0, Number(carga) || 0);
+  return Math.min(100, Math.round((cur / cap) * 100));
+}
 
 /* ===== Handler ===== */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
+    /* ============== GET (con filtros) ============== */
     if (req.method === "GET") {
+      const { search = "", estado = "todos", habilidades = "", carga = "todos" } =
+        (req.query as Record<string, string>) || {};
+
+      const AND: any[] = [];
+
+      /* ---------- BÚSQUEDA ROBUSTA ---------- */
+      const q = String(search || "").trim();
+      if (q) {
+        const tokens = q.split(/\s+/).filter(Boolean);          // "Brenner Granados" -> ["Brenner","Granados"]
+        const digits = q.replace(/\D/g, "");                    // "341-788-56" -> "34178856"
+
+        // nombre del técnico (todas las palabras)
+        const nombreAND = tokens.map((t) => ({
+          nombre: { contains: t, mode: "insensitive" as any },
+        }));
+
+        // nombre del user (todas las palabras)
+        const userNombreAND = tokens.map((t) => ({
+          user: { is: { nombre: { contains: t, mode: "insensitive" as any } } },
+        }));
+
+        const byEmail = { user: { is: { email: { contains: q, mode: "insensitive" as any } } } };
+        const byPhone = digits.length >= 3 ? { telefono: { contains: digits } } : null;
+
+        AND.push({
+          OR: [
+            { AND: nombreAND },
+            { AND: userNombreAND },
+            byEmail,
+            ...(byPhone ? [byPhone] : []),
+          ],
+        });
+      }
+
+      /* ---------- Estado ---------- */
+      if (estado === "activo") AND.push({ user: { is: { is_active: true } } });
+      if (estado === "inactivo") AND.push({ user: { is: { is_active: false } } });
+
+      /* ---------- Habilidades (primer pase CSV) ---------- */
+      if (habilidades) {
+        AND.push({
+          OR: [{ habilidades: { contains: habilidades, mode: "insensitive" as any } }],
+        });
+      }
+
       const items = await prisma.tecnico.findMany({
+        where: AND.length ? { AND } : undefined,
         include: {
           user: {
             select: {
@@ -84,9 +136,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           },
         },
         orderBy: { id: "desc" },
+        take: 500,
       });
 
-      // traer bloqueos (si existe tabla)
+      /* ---------- Bloqueos (si existe tabla) ---------- */
       let bloqueosByTec: Record<number, any[]> = {};
       try {
         const allBlocks = await (prisma as any).tecnicoBloqueo.findMany({
@@ -97,15 +150,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       } catch {}
 
-      // normalizar skills[] y blockedDates[]
-      const data = items.map((t: any) => {
+      /* ---------- Normalización + % carga ---------- */
+      const normalizados = items.map((t: any) => {
         const skillsArr =
-          Array.isArray(t.skills) ? t.skills :
-          t?.skills?.values ?? (
-            t.habilidades
-              ? String(t.habilidades).split(",").map((s: string) => s.trim()).filter(Boolean)
-              : []
-          );
+          Array.isArray(t.skills)
+            ? t.skills
+            : t?.skills?.values ??
+              (t.habilidades
+                ? String(t.habilidades)
+                    .split(",")
+                    .map((s: string) => s.trim())
+                    .filter(Boolean)
+                : t.especialidad
+                ? [t.especialidad]
+                : []);
 
         const bloqueos = (bloqueosByTec[t.id] || []).map((b: any) => ({
           startDate: toLocalYmd(b.startDate),
@@ -114,12 +172,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           type: b.type,
         }));
 
-        return { ...t, skills: skillsArr, blockedDates: bloqueos };
+        const capacidad = Number.isFinite(Number(t.capacidad)) ? Math.max(1, Number(t.capacidad)) : 8;
+        const cargaHoy = Number.isFinite(Number(t.carga)) ? Math.max(0, Number(t.carga)) : 0;
+
+        return {
+          ...t,
+          skills: skillsArr,
+          blockedDates: bloqueos,
+          _cap: capacidad,
+          _cur: cargaHoy,
+          _pct: pctCarga(capacidad, cargaHoy),
+        };
       });
 
+      /* ---------- Segundo pase por skills[] JSON ---------- */
+      const byHabilidad = habilidades
+        ? normalizados.filter((t) =>
+            t.skills.some((s: string) =>
+              String(s).toLowerCase().includes(String(habilidades).toLowerCase())
+            )
+          )
+        : normalizados;
+
+      /* ---------- Filtro por carga relativa ---------- */
+      const filtrados = byHabilidad.filter((t) => {
+        if (carga === "todos") return true;
+        const p = t._pct as number;
+        if (carga === "baja") return p <= 50;
+        if (carga === "media") return p > 50 && p <= 80;
+        if (carga === "alta") return p > 80;
+        return true;
+      });
+
+      /* ---------- Limpieza de campos internos ---------- */
+      const data = filtrados.map(({ _cap, _cur, _pct, ...t }) => t);
       return res.status(200).json(data);
     }
 
+    /* ============== POST (crear) ============== */
     if (req.method === "POST") {
       const raw = {
         ...req.body,
@@ -160,7 +250,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const skillsArray = toArray(skills);
       const habilidadesCsv = skillsArray.length ? skillsArray.join(",") : null;
-
       const hashed = password ? await hash(password, 10) : null;
 
       const user = await prisma.user.upsert({
@@ -184,21 +273,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
       });
 
-      let tecnico: any;
-      const baseData: any = {
-        nombre,
-        telefono: telefono ?? null,
-        especialidad: especialidad ?? null,
-        habilidades: habilidadesCsv,     // CSV legacy
-        capacidad: capacidad ?? 8,
-        carga: carga ?? 0,
-        horario_inicio: hhmm(horario_inicio) ?? "08:00",
-        horario_fin: hhmm(horario_fin) ?? "17:00",
-        notas: notas ?? null,            // ⬅️ guarda notas al crear
-        userId: user.id,
-      };
-
-      tecnico = await prisma.tecnico.create({ data: baseData });
+      const tecnico = await prisma.tecnico.create({
+        data: {
+          nombre,
+          telefono: telefono ?? null,
+          especialidad: especialidad ?? null,
+          habilidades: habilidadesCsv, // CSV compat
+          skills: skillsArray, // JSON (si existe la columna)
+          capacidad: capacidad ?? 8,
+          carga: carga ?? 0,
+          horario_inicio: hhmm(horario_inicio) ?? "08:00",
+          horario_fin: hhmm(horario_fin) ?? "17:00",
+          notas: (notas ?? "").trim() || null,
+          userId: user.id,
+        },
+      });
 
       if (Array.isArray(blockedDates) && blockedDates.length) {
         try {
@@ -212,9 +301,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             })),
           });
         } catch {}
+
       }
 
-      // responder normalizado
       let bloqueos: any[] = [];
       try {
         bloqueos = await (prisma as any).tecnicoBloqueo.findMany({

@@ -118,7 +118,7 @@ const ReportesSection: React.FC<ReportesSectionProps> = ({ stats }) => {
     try {
       const [techResponse, customerResponse, vehicleResponse] = await Promise.all([
         fetch("/api/tecnicos"),
-        fetch("/api/clientes"),
+        fetch("/api/clients"),
         fetch("/api/vehiculos?active=true"),
       ]);
 

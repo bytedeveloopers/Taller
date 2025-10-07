@@ -40,9 +40,17 @@ const ToastNotification = ({ toasts, removeToast }: ToastNotificationProps) => {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-[60] space-y-2">
-      {toasts.map((toast) => (
-        <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
+    <div className="fixed top-4 right-4 z-[60] space-y-3 max-w-sm">
+      {toasts.map((toast, index) => (
+        <div
+          key={toast.id}
+          style={{
+            transform: `translateY(${index * 4}px)`,
+            zIndex: 60 - index,
+          }}
+        >
+          <ToastItem toast={toast} onClose={() => removeToast(toast.id)} />
+        </div>
       ))}
     </div>
   );
@@ -167,43 +175,75 @@ const ToastItem = ({ toast, onClose }: { toast: Toast; onClose: () => void }) =>
   );
 };
 
-// Hook personalizado para manejar toasts
+// Estado global para los toasts
+let globalToasts: Toast[] = [];
+let globalListeners: Array<(toasts: Toast[]) => void> = [];
+
+// Funciones para manejar el estado global
+const addGlobalToast = (toast: Omit<Toast, "id">) => {
+  const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const newToast = { ...toast, id };
+
+  // Limitar a máximo 3 toasts a la vez
+  globalToasts = [...globalToasts.slice(-2), newToast];
+
+  // Notificar a todos los listeners
+  globalListeners.forEach((listener) => listener([...globalToasts]));
+};
+
+const removeGlobalToast = (id: string) => {
+  globalToasts = globalToasts.filter((toast) => toast.id !== id);
+  globalListeners.forEach((listener) => listener([...globalToasts]));
+};
+
+const clearAllToasts = () => {
+  globalToasts = [];
+  globalListeners.forEach((listener) => listener([]));
+};
+
+// Hook personalizado para manejar toasts globales
 export const useToast = () => {
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [toasts, setToasts] = useState<Toast[]>([...globalToasts]);
 
-  const addToast = (toast: Omit<Toast, "id">) => {
-    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    setToasts((prev) => [...prev, { ...toast, id }]);
-  };
+  useEffect(() => {
+    // Suscribirse a cambios globales
+    const listener = (newToasts: Toast[]) => {
+      setToasts(newToasts);
+    };
 
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  };
+    globalListeners.push(listener);
+
+    // Cleanup al desmontar
+    return () => {
+      globalListeners = globalListeners.filter((l) => l !== listener);
+    };
+  }, []);
 
   const showSuccess = (title: string, message?: string, duration?: number) => {
-    addToast({ type: "success", title, message, duration });
+    addGlobalToast({ type: "success", title, message, duration });
   };
 
   const showError = (title: string, message?: string, duration?: number) => {
-    addToast({ type: "error", title, message, duration });
+    addGlobalToast({ type: "error", title, message, duration });
   };
 
   const showWarning = (title: string, message?: string, duration?: number) => {
-    addToast({ type: "warning", title, message, duration });
+    addGlobalToast({ type: "warning", title, message, duration });
   };
 
   const showInfo = (title: string, message?: string, duration?: number) => {
-    addToast({ type: "info", title, message, duration });
+    addGlobalToast({ type: "info", title, message, duration });
   };
 
   return {
     toasts,
-    removeToast,
+    removeToast: removeGlobalToast,
     showSuccess,
     showError,
     showWarning,
     showInfo,
-    ToastContainer: () => <ToastNotification toasts={toasts} removeToast={removeToast} />,
+    clearAll: clearAllToasts,
+    ToastContainer: () => <ToastNotification toasts={toasts} removeToast={removeGlobalToast} />,
   };
 };
 

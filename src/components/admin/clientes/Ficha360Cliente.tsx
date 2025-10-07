@@ -118,7 +118,7 @@ const CONTACT_PREFERENCES = {
   PHONE: { label: "Teléfono", icon: PhoneIcon, color: "text-blue-400" },
   WHATSAPP: { label: "WhatsApp", icon: PhoneIcon, color: "text-green-400" },
   EMAIL: { label: "Email", icon: EnvelopeIcon, color: "text-purple-400" },
-};
+} as const;
 
 const STATUS_COLORS = {
   SCHEDULED: "bg-blue-500/20 text-blue-400",
@@ -128,7 +128,143 @@ const STATUS_COLORS = {
   PENDING: "bg-orange-500/20 text-orange-400",
   APPROVED: "bg-green-500/20 text-green-400",
   REJECTED: "bg-red-500/20 text-red-400",
+} as const;
+
+/* ---------------- Normalizadores seguros ---------------- */
+
+const toStringArray = (val: unknown): string[] => {
+  if (Array.isArray(val)) return val.filter(Boolean).map(String);
+  if (typeof val === "string") {
+    return val
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
 };
+
+const toBoolRecord = (val: unknown): Record<string, boolean> => {
+  if (val && typeof val === "object" && !Array.isArray(val)) {
+    const rec: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      rec[k] = Boolean(v);
+    }
+    return rec;
+  }
+  return {};
+};
+
+const toArray = <T,>(val: unknown, mapItem: (x: any) => T): T[] => {
+  if (!val) return [];
+  const a = Array.isArray(val) ? val : [];
+  return a.map(mapItem).filter(Boolean);
+};
+
+const parseNumber = (n: unknown, fallback = 0): number =>
+  typeof n === "number" ? n : Number.isFinite(Number(n)) ? Number(n) : fallback;
+
+const parseString = (s: unknown, fallback = ""): string =>
+  typeof s === "string" ? s : s == null ? fallback : String(s);
+
+/** Mapea la respuesta de la API al shape fuerte de Cliente360 */
+const mapApiToCliente360 = (data: any): Cliente360 => {
+  const vehicles = toArray(data.vehicles ?? data.vehiculos, (v: any) => ({
+    id: parseString(v.id),
+    brand: parseString(v.brand),
+    model: parseString(v.model),
+    year: parseNumber(v.year),
+    licensePlate: v.licensePlate ?? v.placa ?? undefined,
+    trackingCode: parseString(v.trackingCode ?? v.codigo_seguimiento ?? v.code),
+    status: parseString(v.status ?? "PENDING"),
+    color: v.color ?? undefined,
+    mileage: v.mileage != null ? parseNumber(v.mileage) : undefined,
+    createdAt: parseString(v.createdAt ?? v.created_at ?? new Date().toISOString()),
+  }));
+
+  const appointments = toArray(data.appointments ?? data.ordenes, (a: any) => ({
+    id: parseString(a.id),
+    scheduledAt: parseString(a.scheduledAt ?? a.fecha ?? a.createdAt ?? a.created_at),
+    status: parseString(a.status ?? "SCHEDULED"),
+    service: a.service ?? a.servicio ?? undefined,
+    notes: a.notes ?? undefined,
+    vehicle: a.vehicle
+      ? {
+          brand: parseString(a.vehicle.brand),
+          model: parseString(a.vehicle.model),
+          licensePlate: a.vehicle.licensePlate ?? undefined,
+        }
+      : undefined,
+  }));
+
+  const quotes = toArray(data.quotes ?? data.cotizaciones, (q: any) => ({
+    id: parseString(q.id),
+    status: parseString(q.status ?? "PENDING"),
+    total: parseNumber(q.total, 0),
+    createdAt: parseString(q.createdAt ?? q.created_at ?? new Date().toISOString()),
+    approvedAt: q.approvedAt ?? q.approved_at ?? undefined,
+    vehicle: q.vehicle
+      ? {
+          brand: parseString(q.vehicle.brand),
+          model: parseString(q.vehicle.model),
+          licensePlate: q.vehicle.licensePlate ?? undefined,
+        }
+      : undefined,
+  }));
+
+  const timeline = toArray(data.timeline, (t: any) => ({
+    id: parseString(t.id ?? crypto.randomUUID?.() ?? String(Math.random())),
+    tipo: parseString(t.tipo ?? t.type ?? "event"),
+    titulo: parseString(t.titulo ?? t.title ?? "Evento"),
+    descripcion: parseString(t.descripcion ?? t.description ?? ""),
+    fecha: parseString(t.fecha ?? t.date ?? new Date().toISOString()),
+    datos: t.datos ?? t.data ?? undefined,
+  }));
+
+  const statsRaw = data.stats ?? {};
+  const stats = {
+    vehiculosCount: parseNumber(statsRaw.vehiculosCount ?? vehicles.length, 0),
+    citasCount: parseNumber(statsRaw.citasCount ?? appointments.length, 0),
+    cotizacionesCount: parseNumber(statsRaw.cotizacionesCount ?? quotes.length, 0),
+    cotizacionesAprobadas: parseNumber(statsRaw.cotizacionesAprobadas ?? 0, 0),
+    cotizacionesAprobadaRate: parseNumber(statsRaw.cotizacionesAprobadaRate ?? 0, 0),
+    totalGastado: parseNumber(statsRaw.totalGastado ?? 0, 0),
+    promedioCitasPorMes: statsRaw.promedioCitasPorMes != null ? parseNumber(statsRaw.promedioCitasPorMes) : undefined,
+    diasDesdeUltimaVisita:
+      statsRaw.diasDesdeUltimaVisita != null ? parseNumber(statsRaw.diasDesdeUltimaVisita) : undefined,
+  };
+
+  return {
+    id: parseString(data.id),
+    name: parseString(data.name),
+    phone: parseString(data.phone),
+    email: data.email ?? undefined,
+    altPhone: data.alt_phone ?? data.altPhone ?? undefined,
+    address: data.address ?? undefined,
+    contactPreference: parseString(data.contact_preference ?? data.contactPreference ?? "PHONE"),
+    labels: toStringArray(data.labels),
+    notes: data.notes ?? undefined,
+    pickupPoints: data.pickup_points ?? data.pickupPoints ?? undefined,
+    consents: toBoolRecord(data.consents),
+    isActive: Boolean(data.is_active ?? data.isActive ?? true),
+    createdAt: parseString(data.created_at ?? data.createdAt ?? new Date().toISOString()),
+    updatedAt: parseString(data.updated_at ?? data.updatedAt ?? new Date().toISOString()),
+    lastVisit: data.lastVisit ?? data.updated_at ?? data.updatedAt ?? undefined,
+    vehicles,
+    appointments,
+    quotes,
+    timeline,
+    stats,
+    reminders: toArray(data.reminders, (r: any) => ({
+      id: parseString(r.id),
+      type: parseString(r.type ?? "general"),
+      title: parseString(r.title ?? r.titulo ?? "Recordatorio"),
+      scheduledFor: parseString(r.scheduledFor ?? r.fecha ?? new Date().toISOString()),
+      completed: Boolean(r.completed),
+    })),
+  };
+};
+
+/* ---------------- Componente ---------------- */
 
 export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: Props) {
   const { showSuccess, showError } = useToast();
@@ -140,24 +276,18 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
   const cargarCliente = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/clientes/${clienteId}`);
+      const response = await fetch(`/api/clients/${clienteId}`);
       const result = await response.json();
 
-      if (result.success) {
-        // Map API response to component interface
-        const mappedCliente = {
-          ...result.data,
-          vehicles: result.data.vehiculos || [],
-          appointments: result.data.ordenes || [],
-          quotes: result.data.cotizaciones || [],
-        };
-        setCliente(mappedCliente);
-      } else {
-        showError("Error", result.error || "No se pudo cargar la información del cliente");
+      if (!response.ok || !result?.data) {
+        throw new Error(result?.error || "No se pudo cargar la información del cliente");
       }
-    } catch (error) {
+
+      const mapped = mapApiToCliente360(result.data);
+      setCliente(mapped);
+    } catch (error: any) {
       console.error("Error cargando cliente:", error);
-      showError("Error", "Error de conexión al cargar cliente");
+      showError("Error", error?.message || "Error de conexión al cargar cliente");
     } finally {
       setLoading(false);
     }
@@ -167,40 +297,41 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
     if (isOpen && clienteId) {
       cargarCliente();
     }
-  }, [isOpen, clienteId]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, clienteId]);
 
   // Marcar recordatorio como completado
   const completarRecordatorio = async (recordatorioId: string) => {
     try {
-      const response = await fetch(`/api/clientes/${clienteId}/recordatorios/${recordatorioId}`, {
+      const response = await fetch(`/api/clients/${clienteId}/recordatorios/${recordatorioId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ completed: true }),
       });
 
       if (response.ok) {
-        cargarCliente(); // Recargar datos
+        await cargarCliente();
         showSuccess("Éxito", "Recordatorio marcado como completado");
+      } else {
+        showError("Error", "No se pudo actualizar el recordatorio");
       }
     } catch (error) {
       console.error("Error completando recordatorio:", error);
+      showError("Error", "Error de conexión");
     }
   };
 
   // Renderizar etiqueta
   const renderEtiqueta = (label: string) => {
-    const config = {
-      VIP: { bg: "bg-yellow-500/20", text: "text-yellow-400", border: "border-yellow-500/30" },
-      FLOTA: { bg: "bg-blue-500/20", text: "text-blue-400", border: "border-blue-500/30" },
-      REFERIDO: { bg: "bg-green-500/20", text: "text-green-400", border: "border-green-500/30" },
-      EMPRESA: { bg: "bg-purple-500/20", text: "text-purple-400", border: "border-purple-500/30" },
-      PARTICULAR: { bg: "bg-gray-500/20", text: "text-gray-400", border: "border-gray-500/30" },
-      FRECUENTE: {
-        bg: "bg-orange-500/20",
-        text: "text-orange-400",
-        border: "border-orange-500/30",
-      },
-    }[label] || { bg: "bg-gray-500/20", text: "text-gray-400", border: "border-gray-500/30" };
+    const config =
+      {
+        VIP: { bg: "bg-yellow-500/20", text: "text-yellow-400", border: "border-yellow-500/30" },
+        FLOTA: { bg: "bg-blue-500/20", text: "text-blue-400", border: "border-blue-500/30" },
+        REFERIDO: { bg: "bg-green-500/20", text: "text-green-400", border: "border-green-500/30" },
+        EMPRESA: { bg: "bg-purple-500/20", text: "text-purple-400", border: "border-purple-500/30" },
+        PARTICULAR: { bg: "bg-gray-500/20", text: "text-gray-400", border: "border-gray-500/30" },
+        FRECUENTE: { bg: "bg-orange-500/20", text: "text-orange-400", border: "border-orange-500/30" },
+      }[label] || { bg: "bg-gray-500/20", text: "text-gray-400", border: "border-gray-500/30" };
 
     return (
       <span
@@ -212,24 +343,17 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
     );
   };
 
-  // Formatear fecha
-  const formatearFecha = (fecha: string) => {
-    return new Date(fecha).toLocaleDateString("es-GT", {
+  const formatearFecha = (fecha: string) =>
+    new Date(fecha).toLocaleDateString("es-GT", {
       year: "numeric",
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     });
-  };
 
-  // Formatear moneda
-  const formatearMoneda = (monto: number) => {
-    return new Intl.NumberFormat("es-GT", {
-      style: "currency",
-      currency: "GTQ",
-    }).format(monto);
-  };
+  const formatearMoneda = (monto: number) =>
+    new Intl.NumberFormat("es-GT", { style: "currency", currency: "GTQ" }).format(monto);
 
   if (!isOpen) return null;
 
@@ -240,7 +364,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
         <div className="flex items-center justify-between p-6 border-b border-secondary-700">
           <div className="flex items-center space-x-4">
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
-              {cliente?.name.charAt(0).toUpperCase() || "?"}
+              {cliente?.name?.charAt(0).toUpperCase() || "?"}
             </div>
             <div>
               <h2 className="text-xl font-semibold text-white">{cliente?.name || "Cargando..."}</h2>
@@ -249,13 +373,13 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                   <>
                     <span className="flex items-center">
                       {(() => {
-                        const contactPref =
+                        const pref =
                           CONTACT_PREFERENCES[
-                            cliente.contactPreference as keyof typeof CONTACT_PREFERENCES
+                            (cliente.contactPreference as keyof typeof CONTACT_PREFERENCES) || "PHONE"
                           ];
-                        const ContactIcon = contactPref?.icon;
+                        const ContactIcon = pref?.icon;
                         return ContactIcon ? (
-                          <ContactIcon className={`h-4 w-4 mr-1 ${contactPref.color}`} />
+                          <ContactIcon className={`h-4 w-4 mr-1 ${pref.color}`} />
                         ) : null;
                       })()}
                       {cliente.phone}
@@ -291,7 +415,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
           <div className="px-6 py-4 border-b border-secondary-700">
             <div className="flex items-center justify-between">
               <div className="flex flex-wrap gap-2">
-                {cliente.labels.map((label) => renderEtiqueta(label))}
+                {(cliente.labels ?? []).map((label) => renderEtiqueta(label))}
                 {!cliente.isActive && (
                   <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">
                     Inactivo
@@ -301,15 +425,15 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
               <div className="flex items-center space-x-4 text-sm">
                 <div className="flex items-center text-green-400">
                   <TruckIcon className="h-4 w-4 mr-1" />
-                  {cliente.stats.vehiculosCount} vehículos
+                  {cliente.stats?.vehiculosCount ?? 0} vehículos
                 </div>
                 <div className="flex items-center text-blue-400">
                   <CalendarDaysIcon className="h-4 w-4 mr-1" />
-                  {cliente.stats.citasCount} citas
+                  {cliente.stats?.citasCount ?? 0} citas
                 </div>
                 <div className="flex items-center text-purple-400">
                   <DocumentTextIcon className="h-4 w-4 mr-1" />
-                  {cliente.stats.cotizacionesCount} cotizaciones
+                  {cliente.stats?.cotizacionesCount ?? 0} cotizaciones
                 </div>
               </div>
             </div>
@@ -348,10 +472,10 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
             </div>
           ) : cliente ? (
             <div>
-              {/* Tab: Información General */}
+              {/* General */}
               {activeTab === "general" && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Información de contacto */}
+                  {/* Info contacto */}
                   <div className="lg:col-span-2 space-y-6">
                     <div className="bg-secondary-700 rounded-lg p-6">
                       <h3 className="text-lg font-medium text-white mb-4 flex items-center">
@@ -388,7 +512,8 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                           <p className="text-white">
                             {
                               CONTACT_PREFERENCES[
-                                cliente.contactPreference as keyof typeof CONTACT_PREFERENCES
+                                (cliente.contactPreference as keyof typeof CONTACT_PREFERENCES) ||
+                                  "PHONE"
                               ]?.label
                             }
                           </p>
@@ -442,7 +567,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                     )}
                   </div>
 
-                  {/* Sidebar con estadísticas rápidas */}
+                  {/* Sidebar estadísticas */}
                   <div className="space-y-6">
                     <div className="bg-secondary-700 rounded-lg p-6">
                       <h3 className="text-lg font-medium text-white mb-4">Estadísticas Rápidas</h3>
@@ -450,27 +575,27 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                         <div className="flex justify-between">
                           <span className="text-gray-300">Total Gastado</span>
                           <span className="text-white font-medium">
-                            {formatearMoneda(cliente.stats.totalGastado)}
+                            {formatearMoneda(cliente.stats?.totalGastado ?? 0)}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-300">Tasa de Aprobación</span>
                           <span className="text-white font-medium">
-                            {cliente.stats.cotizacionesAprobadaRate}%
+                            {cliente.stats?.cotizacionesAprobadaRate ?? 0}%
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-300">Citas/Mes Promedio</span>
                           <span className="text-white font-medium">
-                            {(cliente.stats.promedioCitasPorMes || 0).toFixed(1)}
+                            {((cliente.stats?.promedioCitasPorMes ?? 0) as number).toFixed(1)}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-300">Última Visita</span>
                           <span className="text-white font-medium">
-                            {(cliente.stats.diasDesdeUltimaVisita || 0) === 0
+                            {(cliente.stats?.diasDesdeUltimaVisita || 0) === 0
                               ? "Hoy"
-                              : `Hace ${cliente.stats.diasDesdeUltimaVisita || 0} días`}
+                              : `Hace ${cliente.stats?.diasDesdeUltimaVisita || 0} días`}
                           </span>
                         </div>
                       </div>
@@ -531,7 +656,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                 </div>
               )}
 
-              {/* Tab: Vehículos */}
+              {/* Vehículos */}
               {activeTab === "vehiculos" && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -542,7 +667,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                     </button>
                   </div>
 
-                  {cliente.vehicles.length > 0 ? (
+                  {(cliente.vehicles ?? []).length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {cliente.vehicles.map((vehicle) => (
                         <div key={vehicle.id} className="bg-secondary-700 rounded-lg p-6">
@@ -582,7 +707,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                                 <span className="text-white">{vehicle.color}</span>
                               </div>
                             )}
-                            {vehicle.mileage && (
+                            {vehicle.mileage != null && (
                               <div className="flex justify-between">
                                 <span className="text-gray-300">Kilometraje:</span>
                                 <span className="text-white">
@@ -623,12 +748,12 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                 </div>
               )}
 
-              {/* Tab: Historial de Citas */}
+              {/* Citas */}
               {activeTab === "citas" && (
                 <div className="space-y-4">
                   <h3 className="text-lg font-medium text-white">Historial de Citas</h3>
 
-                  {cliente.appointments.length > 0 ? (
+                  {(cliente.appointments ?? []).length > 0 ? (
                     <div className="space-y-4">
                       {cliente.appointments.map((appointment) => (
                         <div key={appointment.id} className="bg-secondary-700 rounded-lg p-6">
@@ -688,12 +813,12 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                 </div>
               )}
 
-              {/* Tab: Cotizaciones */}
+              {/* Cotizaciones */}
               {activeTab === "cotizaciones" && (
                 <div className="space-y-4">
                   <h3 className="text-lg font-medium text-white">Historial de Cotizaciones</h3>
 
-                  {cliente.quotes.length > 0 ? (
+                  {(cliente.quotes ?? []).length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {cliente.quotes.map((quote) => (
                         <div key={quote.id} className="bg-secondary-700 rounded-lg p-6">
@@ -747,12 +872,12 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                 </div>
               )}
 
-              {/* Tab: Timeline */}
+              {/* Timeline */}
               {activeTab === "timeline" && (
                 <div className="space-y-4">
                   <h3 className="text-lg font-medium text-white">Timeline de Actividad</h3>
 
-                  {cliente.timeline.length > 0 ? (
+                  {(cliente.timeline ?? []).length > 0 ? (
                     <div className="flow-root">
                       <ul className="-mb-8">
                         {cliente.timeline.map((item, index) => (
@@ -796,7 +921,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                 </div>
               )}
 
-              {/* Tab: Estadísticas */}
+              {/* Stats */}
               {activeTab === "stats" && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   <div className="bg-secondary-700 rounded-lg p-6">
@@ -804,7 +929,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                       <div>
                         <p className="text-gray-400 text-sm">Vehículos Registrados</p>
                         <p className="text-3xl font-bold text-white">
-                          {cliente.stats.vehiculosCount}
+                          {cliente.stats?.vehiculosCount ?? 0}
                         </p>
                       </div>
                       <TruckIcon className="h-12 w-12 text-blue-500" />
@@ -815,7 +940,9 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-gray-400 text-sm">Total de Citas</p>
-                        <p className="text-3xl font-bold text-white">{cliente.stats.citasCount}</p>
+                        <p className="text-3xl font-bold text-white">
+                          {cliente.stats?.citasCount ?? 0}
+                        </p>
                       </div>
                       <CalendarDaysIcon className="h-12 w-12 text-green-500" />
                     </div>
@@ -826,7 +953,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                       <div>
                         <p className="text-gray-400 text-sm">Cotizaciones</p>
                         <p className="text-3xl font-bold text-white">
-                          {cliente.stats.cotizacionesCount}
+                          {cliente.stats?.cotizacionesCount ?? 0}
                         </p>
                       </div>
                       <DocumentTextIcon className="h-12 w-12 text-purple-500" />
@@ -838,10 +965,10 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                       <div>
                         <p className="text-gray-400 text-sm">Cotizaciones Aprobadas</p>
                         <p className="text-3xl font-bold text-white">
-                          {cliente.stats.cotizacionesAprobadas}
+                          {cliente.stats?.cotizacionesAprobadas ?? 0}
                         </p>
                         <p className="text-sm text-green-400">
-                          {cliente.stats.cotizacionesAprobadaRate}% de aprobación
+                          {cliente.stats?.cotizacionesAprobadaRate ?? 0}% de aprobación
                         </p>
                       </div>
                       <CheckCircleIcon className="h-12 w-12 text-green-500" />
@@ -853,7 +980,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                       <div>
                         <p className="text-gray-400 text-sm">Total Gastado</p>
                         <p className="text-3xl font-bold text-white">
-                          {formatearMoneda(cliente.stats.totalGastado)}
+                          {formatearMoneda(cliente.stats?.totalGastado ?? 0)}
                         </p>
                       </div>
                       <ChartBarIcon className="h-12 w-12 text-yellow-500" />
@@ -865,7 +992,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
                       <div>
                         <p className="text-gray-400 text-sm">Promedio Citas/Mes</p>
                         <p className="text-3xl font-bold text-white">
-                          {(cliente.stats.promedioCitasPorMes || 0).toFixed(1)}
+                          {((cliente.stats?.promedioCitasPorMes ?? 0) as number).toFixed(1)}
                         </p>
                       </div>
                       <ClockIcon className="h-12 w-12 text-orange-500" />

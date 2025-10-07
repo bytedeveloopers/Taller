@@ -1,3 +1,4 @@
+// src/components/admin/clientes/ListadoClientes.tsx
 "use client";
 
 import { useToast } from "@/components/ui/ToastNotification";
@@ -57,6 +58,7 @@ interface Cliente {
 }
 
 interface Props {
+  reloadToken?: number; // 👈 para refrescar al guardar/editar
   onClienteSelect?: (cliente: Cliente) => void;
   onCrearCliente?: () => void;
   onEditarCliente?: (cliente: Cliente) => void;
@@ -76,15 +78,49 @@ const CONTACT_PREFERENCES = {
   PHONE: { label: "Teléfono", icon: PhoneIcon, color: "text-blue-400" },
   WHATSAPP: { label: "WhatsApp", icon: PhoneIcon, color: "text-green-400" },
   EMAIL: { label: "Email", icon: EnvelopeIcon, color: "text-purple-400" },
-};
+} as const;
+
+// Convierte una fila cruda de la API al shape que espera la UI
+const toUICliente = (row: any): Cliente => ({
+  id: row.id,
+  name: row.name,
+  phone: row.phone,
+  email: row.email ?? undefined,
+  altPhone: row.alt_phone ?? undefined,
+  address: row.address ?? undefined,
+  contactPreference: row.contact_preference || "PHONE",
+  labels: row.labels
+    ? String(row.labels)
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean)
+    : [],
+  notes: row.notes ?? undefined,
+  pickupPoints: row.pickup_points ?? undefined,
+  lastVisit: row.updated_at,
+  isActive: !!row.is_active,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  vehicles: [],
+  lastAppointment: undefined,
+  stats: {
+    vehiculosCount: 0,
+    citasCount: 0,
+    cotizacionesCount: 0,
+    cotizacionesAprobadas: 0,
+    cotizacionesAprobadaRate: 0,
+  },
+});
 
 export default function ListadoClientes({
+  reloadToken,
   onClienteSelect,
   onCrearCliente,
   onEditarCliente,
   onVerFicha,
 }: Props) {
-  const { showSuccess, showError } = useToast();
+  const { showError } = useToast();
+
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -97,66 +133,77 @@ export default function ListadoClientes({
   });
   const loadedRef = useRef(false);
 
-  // Cargar clientes
+  // ======= cargar clientes =======
   const cargarClientes = async (resetPage = false) => {
     try {
       setLoading(true);
       const page = resetPage ? 1 : pagination.page;
 
-      const params = new URLSearchParams({
-        search: searchTerm,
-        filter: filtroActivo,
-        page: page.toString(),
-        limit: pagination.limit.toString(),
-      });
+      // Sólo enviar parámetros que la API soporta
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("limit", String(pagination.limit));
+      if (searchTerm.trim().length > 0) params.set("search", searchTerm.trim());
+      if (filtroActivo !== "all") params.set("filter", filtroActivo);
 
-      const response = await fetch(`/api/clientes?${params}`);
+      const response = await fetch(`/api/clients?${params.toString()}`);
       const result = await response.json();
 
-      if (result.success) {
-        setClientes(result.data);
-        setPagination({
-          ...pagination,
-          ...result.pagination,
-          page,
-        });
-      } else {
-        showError("Error", result.error || "No se pudieron cargar los clientes");
+      if (!response.ok) {
+        throw new Error(result?.error || "Error en el listado");
       }
-    } catch (error) {
+
+      const items = Array.isArray(result.items) ? result.items.map(toUICliente) : [];
+      setClientes(items);
+
+      setPagination({
+        page: result.page ?? page,
+        limit: result.pageSize ?? pagination.limit,
+        total: result.total ?? items.length,
+        pages: result.totalPages ?? 1,
+      });
+    } catch (error: any) {
       console.error("Error cargando clientes:", error);
-      showError("Error", "Error de conexión al cargar clientes");
+      showError("Error", error?.message || "No se pudieron cargar los clientes");
     } finally {
       setLoading(false);
     }
   };
 
-  // Efecto para cargar datos iniciales
+  // Primera carga
   useEffect(() => {
     if (!loadedRef.current) {
       loadedRef.current = true;
       cargarClientes();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Efecto para búsqueda y filtros
+  // Búsqueda / filtro — resetea a página 1
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      cargarClientes(true);
-    }, 500);
-
-    return () => clearTimeout(timeoutId);
+    const t = setTimeout(() => cargarClientes(true), 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, filtroActivo]);
 
-  // Formatear fecha de última visita
+  // Cambio de página
+  useEffect(() => {
+    if (loadedRef.current) cargarClientes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pagination.page]);
+
+  // 👇 Recarga cuando guardas/actualizas (cambia reloadToken)
+  useEffect(() => {
+    if (loadedRef.current) cargarClientes(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadToken]);
+
+  // ======= helpers UI =======
   const formatearUltimaVisita = (fecha?: string) => {
     if (!fecha) return "Nunca";
-
     const date = new Date(fecha);
     const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
+    const diffDays = Math.floor(Math.abs(+now - +date) / (1000 * 60 * 60 * 24));
     if (diffDays === 0) return "Hoy";
     if (diffDays === 1) return "Ayer";
     if (diffDays < 7) return `Hace ${diffDays} días`;
@@ -165,13 +212,13 @@ export default function ListadoClientes({
     return `Hace ${Math.floor(diffDays / 365)} años`;
   };
 
-  // Renderizar etiqueta
   const renderEtiqueta = (label: string) => {
-    const config = {
-      VIP: { bg: "bg-yellow-500/20", text: "text-yellow-400", border: "border-yellow-500/30" },
-      FLOTA: { bg: "bg-blue-500/20", text: "text-blue-400", border: "border-blue-500/30" },
-      REFERIDO: { bg: "bg-green-500/20", text: "text-green-400", border: "border-green-500/30" },
-    }[label] || { bg: "bg-gray-500/20", text: "text-gray-400", border: "border-gray-500/30" };
+    const config =
+      {
+        VIP: { bg: "bg-yellow-500/20", text: "text-yellow-400", border: "border-yellow-500/30" },
+        FLOTA: { bg: "bg-blue-500/20", text: "text-blue-400", border: "border-blue-500/30" },
+        REFERIDO: { bg: "bg-green-500/20", text: "text-green-400", border: "border-green-500/30" },
+      }[label] || { bg: "bg-gray-500/20", text: "text-gray-400", border: "border-gray-500/30" };
 
     return (
       <span
@@ -183,19 +230,18 @@ export default function ListadoClientes({
     );
   };
 
-  // Renderizar fila de cliente
   const renderClienteRow = (cliente: Cliente) => {
-    const contactPref =
+    const pref =
       CONTACT_PREFERENCES[cliente.contactPreference as keyof typeof CONTACT_PREFERENCES] ||
       CONTACT_PREFERENCES.PHONE;
-    const ContactIcon = contactPref.icon;
+    const ContactIcon = pref.icon;
 
     return (
       <tr
         key={cliente.id}
         className="border-b border-secondary-700 hover:bg-secondary-800/50 transition-colors"
       >
-        {/* Nombre y contacto */}
+        {/* Cliente */}
         <td className="p-4">
           <div className="flex items-start space-x-3">
             <div className="flex-shrink-0">
@@ -206,7 +252,7 @@ export default function ListadoClientes({
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-medium text-white truncate">{cliente.name}</h3>
               <div className="flex items-center mt-1 space-x-2">
-                <ContactIcon className={`h-3 w-3 ${contactPref.color}`} />
+                <ContactIcon className={`h-3 w-3 ${pref.color}`} />
                 <span className="text-xs text-gray-400">{cliente.phone}</span>
               </div>
               {cliente.email && (
@@ -240,12 +286,10 @@ export default function ListadoClientes({
 
         {/* Etiquetas */}
         <td className="p-4">
-          <div className="flex flex-wrap gap-1">
-            {cliente.labels.map((label) => renderEtiqueta(label))}
-          </div>
+          <div className="flex flex-wrap gap-1">{cliente.labels.map((l) => renderEtiqueta(l))}</div>
         </td>
 
-        {/* Estadísticas */}
+        {/* Stats */}
         <td className="p-4">
           <div className="text-xs text-gray-400 space-y-1">
             <div>Citas: {cliente.stats.citasCount}</div>
@@ -276,9 +320,7 @@ export default function ListadoClientes({
               <PencilIcon className="h-4 w-4" />
             </button>
             <button
-              onClick={() => {
-                /* TODO: Implementar fusionar */
-              }}
+              onClick={() => {}}
               className="p-1 text-purple-400 hover:text-purple-300 transition-colors"
               title="Fusionar duplicados"
             >
@@ -310,7 +352,6 @@ export default function ListadoClientes({
       {/* Buscador y filtros */}
       <div className="bg-secondary-800 rounded-lg p-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Buscador */}
           <div className="lg:col-span-2">
             <div className="relative">
               <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -324,16 +365,15 @@ export default function ListadoClientes({
             </div>
           </div>
 
-          {/* Filtros */}
           <div className="relative">
             <select
               value={filtroActivo}
               onChange={(e) => setFiltroActivo(e.target.value)}
               className="w-full px-4 py-2 bg-secondary-700 border border-secondary-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
             >
-              {FILTROS.map((filtro) => (
-                <option key={filtro.key} value={filtro.key}>
-                  {filtro.label}
+              {FILTROS.map((f) => (
+                <option key={f.key} value={f.key}>
+                  {f.label}
                 </option>
               ))}
             </select>
@@ -342,11 +382,11 @@ export default function ListadoClientes({
         </div>
       </div>
 
-      {/* Tabla de clientes */}
+      {/* Tabla */}
       <div className="bg-secondary-800 rounded-lg overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center p-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
             <span className="ml-2 text-gray-400">Cargando clientes...</span>
           </div>
         ) : clientes.length > 0 ? (
@@ -357,21 +397,16 @@ export default function ListadoClientes({
                   <tr>
                     <th className="text-left p-4 text-sm font-medium text-gray-300">Cliente</th>
                     <th className="text-left p-4 text-sm font-medium text-gray-300">Vehículos</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-300">
-                      Última Visita
-                    </th>
+                    <th className="text-left p-4 text-sm font-medium text-gray-300">Última Visita</th>
                     <th className="text-left p-4 text-sm font-medium text-gray-300">Etiquetas</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-300">
-                      Estadísticas
-                    </th>
+                    <th className="text-left p-4 text-sm font-medium text-gray-300">Estadísticas</th>
                     <th className="text-left p-4 text-sm font-medium text-gray-300">Acciones</th>
                   </tr>
                 </thead>
-                <tbody>{clientes.map((cliente) => renderClienteRow(cliente))}</tbody>
+                <tbody>{clientes.map(renderClienteRow)}</tbody>
               </table>
             </div>
 
-            {/* Paginación */}
             {pagination.pages > 1 && (
               <div className="flex items-center justify-between px-6 py-4 border-t border-secondary-700">
                 <div className="text-sm text-gray-400">
@@ -381,7 +416,7 @@ export default function ListadoClientes({
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => setPagination((prev) => ({ ...prev, page: prev.page - 1 }))}
+                    onClick={() => setPagination((p) => ({ ...p, page: Math.max(p.page - 1, 1) }))}
                     disabled={pagination.page <= 1}
                     className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
@@ -391,7 +426,9 @@ export default function ListadoClientes({
                     Página {pagination.page} de {pagination.pages}
                   </span>
                   <button
-                    onClick={() => setPagination((prev) => ({ ...prev, page: prev.page + 1 }))}
+                    onClick={() =>
+                      setPagination((p) => ({ ...p, page: Math.min(p.page + 1, p.pages) }))
+                    }
                     disabled={pagination.page >= pagination.pages}
                     className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >

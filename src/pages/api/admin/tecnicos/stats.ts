@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { prisma } from "@/lib/prisma";
+import prisma from '@/lib/prisma';
 
 type Resp =
   | { ok: true; data: { total: number; activos: number; disponibles: number; cargaPromedio: number } }

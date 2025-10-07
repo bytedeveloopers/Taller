@@ -140,7 +140,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
   const cargarCliente = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/clientes/${clienteId}`);
+      const response = await fetch(`/api/clients/${clienteId}`);
       const result = await response.json();
 
       if (result.success) {
@@ -172,7 +172,7 @@ export default function Ficha360Cliente({ isOpen, onClose, clienteId, onEdit }: 
   // Marcar recordatorio como completado
   const completarRecordatorio = async (recordatorioId: string) => {
     try {
-      const response = await fetch(`/api/clientes/${clienteId}/recordatorios/${recordatorioId}`, {
+      const response = await fetch(`/api/clients/${clienteId}/recordatorios/${recordatorioId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ completed: true }),

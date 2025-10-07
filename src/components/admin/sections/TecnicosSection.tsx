@@ -5,9 +5,10 @@ import Ficha360Tecnico from "@/components/admin/tecnicos/Ficha360Tecnico";
 import FormularioTecnico from "@/components/admin/tecnicos/FormularioTecnico";
 import ListadoTecnicos from "@/components/admin/tecnicos/ListadoTecnicos";
 import { useToast } from "@/components/ui/ToastNotification";
+import ToastSettings from "@/components/ui/ToastSettings";
 import { Technician } from "@/types";
-import { PlusIcon, UserGroupIcon } from "@heroicons/react/24/outline";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { CogIcon, PlusIcon, UserGroupIcon } from "@heroicons/react/24/outline";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 /* ===================== Tipos para API ===================== */
 type ApiTecnico = {
@@ -15,8 +16,8 @@ type ApiTecnico = {
   nombre: string;
   telefono?: string | null;
   especialidad?: string | null;
-  habilidades?: string | null;   // CSV (legacy)
-  skills?: string[];             // JSON (si existiera la columna)
+  habilidades?: string | null; // CSV (legacy)
+  skills?: string[]; // JSON (si existiera la columna)
   horario_inicio?: string | null;
   horario_fin?: string | null;
   capacidad?: number | null;
@@ -46,7 +47,7 @@ type TechLike = {
 };
 function calcLoad(t: TechLike) {
   const capacity = Math.max(1, Number(t.capacidad ?? t.capacityPerDay ?? 1));
-  const current  = Math.max(0, Number(t.carga ?? t.cargaActual ?? t.jobsToday ?? 0));
+  const current = Math.max(0, Number(t.carga ?? t.cargaActual ?? t.jobsToday ?? 0));
   const pct = Math.min(100, Math.round((current / capacity) * 100));
 
   let level: "Baja" | "Media" | "Alta" = "Baja";
@@ -59,7 +60,6 @@ function calcLoad(t: TechLike) {
 
 /* ===================== Mapeo API -> UI ===================== */
 type TechnicianRow = Technician & {
-  // extras que pasamos a la tabla (no rompen Technician)
   capacidad?: number | null;
   carga?: number | null;
   load?: ReturnType<typeof calcLoad>;
@@ -70,8 +70,13 @@ function mapApiToTechnician(api: any): TechnicianRow {
   const skillsArr = Array.isArray(api.skills)
     ? api.skills
     : api.habilidades
-    ? String(api.habilidades).split(",").map((s: string) => s.trim()).filter(Boolean)
-    : (api.especialidad ? [api.especialidad] : []);
+    ? String(api.habilidades)
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean)
+    : api.especialidad
+    ? [api.especialidad]
+    : [];
 
   const row: TechnicianRow = {
     id: String(api.id),
@@ -88,13 +93,10 @@ function mapApiToTechnician(api: any): TechnicianRow {
     createdAt: new Date(),
     updatedAt: new Date(),
     mustChangePassword: !!api.user?.must_change_password,
-
-    // extras para la vista:
     capacidad: api.capacidad ?? 8,
     carga: api.carga ?? 0,
   };
 
-  // calcula y adjunta load normalizado
   row.load = calcLoad({
     capacidad: row.capacidad,
     capacityPerDay: row.capacityPerDay,
@@ -140,7 +142,18 @@ interface Props {
 
 /* ===================== Componente ===================== */
 export default function TecnicosSection({ stats }: Props) {
-  const { showSuccess, showError } = useToast();
+  const {
+    showSuccess,
+    showError,
+    showInfo,
+    showWarning,
+    showSuccessReplace,
+    showErrorReplace,
+    showInfoReplace,
+    showWarningReplace,
+    clearAll,
+    ToastContainer,
+  } = useToast();
 
   // referencia estable para notificaciones
   const showErrorRef = useRef(showError);
@@ -148,7 +161,11 @@ export default function TecnicosSection({ stats }: Props) {
 
   // estados principales
   const [tecnicos, setTecnicos] = useState<TechnicianRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // skeleton SOLO primer load
+  const [refetching, setRefetching] = useState(false); // refetch suave para filtros
+  const firstLoadRef = useRef(true);
+  const activeController = useRef<AbortController | null>(null);
+
   const [selectedTecnico, setSelectedTecnico] = useState<TechnicianRow | null>(null);
   const [tecnicosStats, setTecnicosStats] = useState<TechnicianStats>({
     totalTecnicos: 0,
@@ -161,6 +178,7 @@ export default function TecnicosSection({ stats }: Props) {
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [mostrarFicha360, setMostrarFicha360] = useState(false);
   const [mostrarAgenda, setMostrarAgenda] = useState(false);
+  const [mostrarConfigToast, setMostrarConfigToast] = useState(false);
 
   // filtros
   const [busqueda, setBusqueda] = useState("");
@@ -170,6 +188,7 @@ export default function TecnicosSection({ stats }: Props) {
 
   // evitar llamadas simultáneas
   const isLoadingRef = useRef(false);
+  const isSavingRef = useRef(false);
 
   /* ========= Helper para refrescar técnicos + estadísticas ========= */
   const fetchTecnicosYStats = async () => {
@@ -180,19 +199,34 @@ export default function TecnicosSection({ stats }: Props) {
       carga: filtroCarga || "todos",
     });
 
+    // cancelar petición anterior si aún sigue viva
+    if (activeController.current) activeController.current.abort();
+    const controller = new AbortController();
+    activeController.current = controller;
+
     try {
       // 1) Técnicos
       const tecnicosRes = await fetch(`/api/admin/tecnicos?${params.toString()}`, {
         method: "GET",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
+        signal: controller.signal,
       });
 
       const ct1 = tecnicosRes.headers.get("content-type") || "";
       if (tecnicosRes.ok && ct1.includes("application/json")) {
         const list = await tecnicosRes.json();
-        setTecnicos((Array.isArray(list) ? list : []).map((t: ApiTecnico) => mapApiToTechnician(t)));
+        const mapped = (Array.isArray(list) ? list : []).map((t: ApiTecnico) =>
+          mapApiToTechnician(t)
+        );
+        setTecnicos(mapped);
+
+        // toast de "sin resultados" sólo cuando hay filtros activos
+        const filtrosActivos =
+          !!busqueda || filtroEstado !== "todos" || !!filtroHabilidades || filtroCarga !== "todos";
+        if (filtrosActivos && mapped.length === 0) {
+          showInfo("Sin resultados", "No se encontraron técnicos con esos filtros.", 1800);
+        }
       } else {
-        // si vino HTML o error, no truena la UI
         setTecnicos([]);
       }
 
@@ -200,13 +234,14 @@ export default function TecnicosSection({ stats }: Props) {
       const statsRes = await fetch("/api/admin/tecnicos/stats", {
         method: "GET",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
+        signal: controller.signal,
       });
 
       const ct2 = statsRes.headers.get("content-type") || "";
       if (statsRes.ok && ct2.includes("application/json")) {
         const raw = await statsRes.json();
         const d = raw?.data ?? raw ?? {};
-        setTecnicosStats({
+        const newStats = {
           totalTecnicos: d.totalTecnicos ?? d.total ?? 0,
           tecnicosActivos: d.tecnicosActivos ?? d.activos ?? 0,
           cargaPromedio:
@@ -217,17 +252,29 @@ export default function TecnicosSection({ stats }: Props) {
               : 0,
           disponibles:
             d.disponibles ?? d.available ?? Math.max(0, (d.total ?? 0) - (d.activos ?? 0)),
-        });
+        };
+        setTecnicosStats(newStats);
       } else {
-        setTecnicosStats({ totalTecnicos: 0, tecnicosActivos: 0, cargaPromedio: 0, disponibles: 0 });
+        setTecnicosStats({
+          totalTecnicos: 0,
+          tecnicosActivos: 0,
+          cargaPromedio: 0,
+          disponibles: 0,
+        });
       }
     } catch (err: any) {
+      if (err?.name === "AbortError") return; // petición cancelada: ignorar
       console.error("fetchTecnicosYStats error:", err);
       setTecnicos([]);
       setTecnicosStats({ totalTecnicos: 0, tecnicosActivos: 0, cargaPromedio: 0, disponibles: 0 });
-      if (busqueda || filtroEstado !== "todos" || filtroHabilidades || filtroCarga !== "todos") {
+
+      const filtrosActivos =
+        !!busqueda || filtroEstado !== "todos" || !!filtroHabilidades || filtroCarga !== "todos";
+      if (filtrosActivos) {
         showErrorRef.current("Error", err?.message || "Error al cargar los datos");
       }
+    } finally {
+      activeController.current = null;
     }
   };
 
@@ -248,7 +295,12 @@ export default function TecnicosSection({ stats }: Props) {
         console.error("Error cargando datos:", error);
         if (isMounted) {
           setTecnicos([]);
-          if (busqueda || filtroEstado !== "todos" || filtroHabilidades || filtroCarga !== "todos") {
+          if (
+            busqueda ||
+            filtroEstado !== "todos" ||
+            filtroHabilidades ||
+            filtroCarga !== "todos"
+          ) {
             showErrorRef.current(
               "Error",
               error instanceof Error ? error.message : "Error al cargar los datos"
@@ -284,51 +336,56 @@ export default function TecnicosSection({ stats }: Props) {
   const handleVerFicha360 = (tecnico: TechnicianRow) => {
     setSelectedTecnico(tecnico);
     setMostrarFicha360(true);
+    showInfo("👤 Ficha Completa", `Visualizando perfil detallado de ${tecnico.name}`, 2000);
   };
 
   const handleVerAgenda = (tecnico: TechnicianRow) => {
     setSelectedTecnico(tecnico);
     setMostrarAgenda(true);
+    showInfo("📅 Agenda del Técnico", `Consultando horarios y citas de ${tecnico.name}`, 2000);
   };
 
   // Recibe el payload del FormularioTecnico (patrón onGuardar)
   const handleGuardarTecnico = async (tecnicoData: any) => {
+    // Prevenir múltiples ejecuciones simultáneas
+    if (isSavingRef.current) {
+      console.log("Ya hay un guardado en proceso, ignorando...");
+      return;
+    }
+
+    const editing = !!selectedTecnico;
+    isSavingRef.current = true;
+
     try {
-      const editing = !!selectedTecnico;
-      const url = editing
-        ? `/api/admin/tecnicos/${selectedTecnico!.id}`
-        : "/api/admin/tecnicos";
+      const url = editing ? `/api/admin/tecnicos/${selectedTecnico!.id}` : "/api/admin/tecnicos";
       const method = editing ? "PATCH" : "POST";
 
-      // normaliza skills
       const skillsArr: string[] = Array.isArray(tecnicoData.skills)
         ? tecnicoData.skills
         : typeof tecnicoData.skills === "string"
-        ? tecnicoData.skills.split(",").map((s: string) => s.trim()).filter(Boolean)
+        ? tecnicoData.skills
+            .split(",")
+            .map((s: string) => s.trim())
+            .filter(Boolean)
         : [];
 
-      // capacidad segura: solo mandamos si es válida (1–50)
       const capRaw = tecnicoData.capacityPerDay ?? tecnicoData.capacidad;
       const capNum = Number(capRaw);
       const capacidadValida =
-        Number.isFinite(capNum) && capNum >= 1 && capNum <= 50
-          ? Math.floor(capNum)
-          : undefined;
+        Number.isFinite(capNum) && capNum >= 1 && capNum <= 50 ? Math.floor(capNum) : undefined;
 
-      // bloqueos seguros (filtra vacíos)
-      const blocked =
-        Array.isArray(tecnicoData.blockedDates)
-          ? tecnicoData.blockedDates.filter(
-              (b: any) =>
-                b &&
-                typeof b.startDate === "string" &&
-                typeof b.endDate === "string" &&
-                typeof b.reason === "string" &&
-                b.startDate &&
-                b.endDate &&
-                b.reason.trim()
-            )
-          : undefined;
+      const blocked = Array.isArray(tecnicoData.blockedDates)
+        ? tecnicoData.blockedDates.filter(
+            (b: any) =>
+              b &&
+              typeof b.startDate === "string" &&
+              typeof b.endDate === "string" &&
+              typeof b.reason === "string" &&
+              b.startDate &&
+              b.endDate &&
+              b.reason.trim()
+          )
+        : undefined;
 
       const base: any = {
         nombre: tecnicoData.name || tecnicoData.nombre,
@@ -339,14 +396,12 @@ export default function TecnicosSection({ stats }: Props) {
         is_active: !!tecnicoData.active,
         must_change_password: !!tecnicoData.mustChangePassword,
         notas: (tecnicoData.notes ?? tecnicoData.notas ?? "").trim() || null,
-
-        // clave de compatibilidad con tu BD actual:
-        skills: skillsArr,                 // si en el futuro tienes columna JSON
-        habilidades: skillsArr.join(","),  // HOY se guarda en CSV
+        skills: skillsArr,
+        habilidades: skillsArr.join(","),
       };
 
       if (!editing) {
-        base.email = tecnicoData.email;          // creación
+        base.email = tecnicoData.email;
         if (tecnicoData.password) base.password = tecnicoData.password;
       }
       if (capacidadValida !== undefined) base.capacidad = capacidadValida;
@@ -358,7 +413,6 @@ export default function TecnicosSection({ stats }: Props) {
         body: JSON.stringify(base),
       });
 
-      // manejo de errores legible
       const ct = res.headers.get("content-type") || "";
       if (!res.ok) {
         if (ct.includes("application/json")) {
@@ -366,9 +420,7 @@ export default function TecnicosSection({ stats }: Props) {
           const msg =
             j?.message ||
             j?.error?.formErrors?.[0] ||
-            (j?.error?.fieldErrors
-              ? Object.values(j.error.fieldErrors)[0]?.[0]
-              : null) ||
+            (j?.error?.fieldErrors ? Object.values(j.error.fieldErrors)[0]?.[0] : null) ||
             `${res.status} ${res.statusText}`;
           throw new Error(msg);
         } else {
@@ -378,21 +430,42 @@ export default function TecnicosSection({ stats }: Props) {
       }
 
       await res.json().catch(() => ({}));
-      showSuccess(
-        "Éxito",
-        editing ? "Técnico actualizado correctamente" : "Técnico creado correctamente"
-      );
+
+      // Notificación simple con colores apropiados - REEMPLAZA cualquier toast previo
+      const nombreTecnico = tecnicoData.name || tecnicoData.nombre;
+      if (editing) {
+        showInfoReplace(
+          "Técnico Actualizado",
+          `${nombreTecnico} ha sido actualizado correctamente`,
+          3000,
+          "tecnico-save"
+        );
+      } else {
+        showSuccessReplace(
+          "Técnico Creado",
+          `${nombreTecnico} ha sido creado correctamente`,
+          3000,
+          "tecnico-save"
+        );
+      }
+
       setMostrarFormulario(false);
       await fetchTecnicosYStats();
     } catch (err: any) {
       console.error("Error guardando técnico:", err);
-      showError("Error", err?.message || "Error de conexión al guardar técnico");
+      showErrorReplace("Error", err?.message || "Error al guardar técnico", 4000, "tecnico-save");
+    } finally {
+      // Siempre resetear el flag al final
+      isSavingRef.current = false;
     }
   };
 
   const handleActivarDesactivarTecnico = async (tecnicoId: string, activo: boolean) => {
     const accion = activo ? "activar" : "desactivar";
-    if (!confirm(`¿Estás seguro de que deseas ${accion} este técnico?`)) return;
+    const tecnico = tecnicos.find((t) => t.id === tecnicoId);
+    const nombreTecnico = tecnico?.name || "este técnico";
+
+    if (!confirm(`¿Estás seguro de que deseas ${accion} a ${nombreTecnico}?`)) return;
 
     try {
       const response = await fetch(`/api/admin/tecnicos/${tecnicoId}`, {
@@ -402,20 +475,37 @@ export default function TecnicosSection({ stats }: Props) {
       });
 
       if (response.ok) {
-        showSuccess("Éxito", `Técnico ${activo ? "activado" : "desactivado"} correctamente`);
+        // Notificación con colores apropiados - REEMPLAZA cualquier toast previo
+        if (activo) {
+          showSuccessReplace(
+            "Técnico Activado",
+            `${nombreTecnico} ha sido activado correctamente`,
+            3000,
+            "tecnico-toggle"
+          );
+        } else {
+          showWarningReplace(
+            "Técnico Desactivado",
+            `${nombreTecnico} ha sido desactivado temporalmente`,
+            3000,
+            "tecnico-toggle"
+          );
+        }
 
-        // actualizar local rápido
         setTecnicos((prev) => prev.map((t) => (t.id === tecnicoId ? { ...t, active: activo } : t)));
-
-        // refrescar tarjetas (y lista por si cambió algo más)
         await fetchTecnicosYStats();
       } else {
         const errorData = await response.json().catch(() => null);
-        showError("Error", errorData?.message || `Error al ${accion} técnico`);
+        showErrorReplace(
+          "Error",
+          errorData?.message || `Error al ${accion} técnico`,
+          4000,
+          "tecnico-toggle"
+        );
       }
     } catch (error) {
       console.error(`Error ${accion}ndo técnico:`, error);
-      showError("Error", `Error de conexión al ${accion} técnico`);
+      showErrorReplace("Error de Conexión", `Error al ${accion} técnico`, 4000, "tecnico-toggle");
     }
   };
 
@@ -453,7 +543,7 @@ export default function TecnicosSection({ stats }: Props) {
     );
   }
 
-  /* ===================== UI (sin cambios visuales) ===================== */
+  /* ===================== UI ===================== */
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
@@ -503,20 +593,53 @@ export default function TecnicosSection({ stats }: Props) {
       <div className="bg-secondary-800 rounded-xl p-6 border border-secondary-700">
         <div className="flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center mb-6">
           <h2 className="text-2xl font-bold text-white">Gestión de Técnicos</h2>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            {/* indicador de refetch sutil */}
+            {refetching && (
+              <svg
+                className="animate-spin h-5 w-5 text-blue-400"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                />
+              </svg>
+            )}
+
             <button
               onClick={handleCrearTecnico}
-              className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg inline-flex items-center gap-2 transition-colors"
+              className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg inline-flex items-center gap-2 transition-colors btn-toast-action"
             >
               <PlusIcon className="w-4 h-4" />
               Nuevo Técnico
+            </button>
+
+            <button
+              onClick={() => setMostrarConfigToast(true)}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg inline-flex items-center gap-2 transition-colors btn-toast-action"
+              title="Configurar notificaciones"
+            >
+              <CogIcon className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         <ListadoTecnicos
-          tecnicos={tecnicosConCarga as unknown as Technician[]} // pasa con extras
-          loading={loading}
+          tecnicos={tecnicosConCarga as unknown as Technician[]}
+          loading={false /* el skeleton lo controlamos arriba */}
           busqueda={busqueda}
           setBusqueda={setBusqueda}
           filtroEstado={filtroEstado}
@@ -540,7 +663,6 @@ export default function TecnicosSection({ stats }: Props) {
           onCancelar={() => setMostrarFormulario(false)}
         />
       )}
-      {/* patrón onGuardar: el form NO hace fetch */}
 
       {mostrarFicha360 && selectedTecnico && (
         <Ficha360Tecnico
@@ -550,11 +672,14 @@ export default function TecnicosSection({ stats }: Props) {
       )}
 
       {mostrarAgenda && selectedTecnico && (
-        <AgendaTecnico
-          tecnico={selectedTecnico as any}
-          onCerrar={() => setMostrarAgenda(false)}
-        />
+        <AgendaTecnico tecnico={selectedTecnico as any} onCerrar={() => setMostrarAgenda(false)} />
       )}
+
+      {/* Modal de configuración de toast */}
+      {mostrarConfigToast && <ToastSettings onClose={() => setMostrarConfigToast(false)} />}
+
+      {/* Toast Container */}
+      <ToastContainer />
     </div>
   );
 }

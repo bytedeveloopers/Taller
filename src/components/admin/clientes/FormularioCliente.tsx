@@ -178,7 +178,7 @@ export default function FormularioCliente({
         params.set("excludeId", cliente.id);
       }
 
-      const response = await fetch(`/api/clientes?${params}`);
+      const response = await fetch(`/api/clients?${params}`);
       const result = await response.json();
 
       if (result.success && result.duplicates && result.duplicates.length > 0) {
@@ -245,7 +245,7 @@ export default function FormularioCliente({
   const fusionarConDuplicado = async (duplicadoId: string) => {
     try {
       setLoading(true);
-      const response = await fetch("/api/clientes/fusionar", {
+      const response = await fetch("/api/clients/fusionar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -293,7 +293,7 @@ export default function FormularioCliente({
         pickupPoints: formData.pickupPoints || null,
       };
 
-      const url = mode === "edit" && cliente?.id ? `/api/clientes/${cliente.id}` : "/api/clientes";
+      const url = mode === "edit" && cliente?.id ? `/api/clients/${cliente.id}` : "/api/clients";
 
       const method = mode === "edit" ? "PUT" : "POST";
 

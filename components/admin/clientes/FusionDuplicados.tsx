@@ -134,7 +134,7 @@ export default function FusionDuplicados({
         limit: "20",
       });
 
-      const response = await fetch(`/api/clientes?${params}`);
+      const response = await fetch(`/api/clients?${params}`);
       const result = await response.json();
 
       if (result.success && result.duplicates) {
@@ -155,7 +155,7 @@ export default function FusionDuplicados({
     if (clientesDetallados[clienteId]) return clientesDetallados[clienteId];
 
     try {
-      const response = await fetch(`/api/clientes/${clienteId}`);
+      const response = await fetch(`/api/clients/${clienteId}`);
       const result = await response.json();
 
       if (result.success) {
@@ -215,7 +215,7 @@ export default function FusionDuplicados({
       setLoading(true);
       setPaso("completado");
 
-      const response = await fetch("/api/clientes/fusionar", {
+      const response = await fetch("/api/clients/fusionar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
