@@ -6,7 +6,7 @@ import FormularioVehiculo from "@/components/admin/vehiculos/FormularioVehiculo"
 import ListadoVehiculos from "@/components/admin/vehiculos/ListadoVehiculos";
 import { useToast } from "@/components/ui/ToastNotification";
 import { MagnifyingGlassIcon, PlusIcon, TruckIcon } from "@heroicons/react/24/outline";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface Vehiculo {
   id: string;
@@ -79,7 +79,7 @@ interface Props {
 export default function VehiculosSection({ stats }: Props) {
   const { showSuccess, showError } = useToast();
 
-  // Crear referencia estable para evitar recreación en useCallback
+  // referencia estable del toast de error
   const showErrorRef = useRef(showError);
   showErrorRef.current = showError;
 
@@ -99,65 +99,49 @@ export default function VehiculosSection({ stats }: Props) {
   const [mostrarFicha360, setMostrarFicha360] = useState(false);
   const [mostrarAltaRapida, setMostrarAltaRapida] = useState(false);
 
-  // Estados de búsqueda y filtros
+  // Filtros
   const [busqueda, setBusqueda] = useState("");
   const [filtroCliente, setFiltroCliente] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("todos");
   const [filtroUltimaVisita, setFiltroUltimaVisita] = useState("todos");
 
-  // Referencia para controlar si hay una carga en progreso
+  // Control de concurrencia
   const isLoadingRef = useRef(false);
 
-  // Effect para cargar datos con debounce y control estricto de llamadas
-  useEffect(() => {
-    let isMounted = true;
+  // ---- builder de query
+  const buildQuery = () => {
+    const params = new URLSearchParams({
+      search: busqueda,
+      cliente: filtroCliente,
+      estado: filtroEstado,
+      ultimaVisita: filtroUltimaVisita,
+    });
+    return params.toString();
+  };
 
-    // Si ya hay una carga en progreso, cancelar esta
-    if (isLoadingRef.current) {
-      return;
-    }
-
-    const timeoutId = setTimeout(async () => {
-      // Doble check antes de empezar la carga
-      if (isLoadingRef.current || !isMounted) {
-        return;
-      }
-
+  // ---- Carga reutilizable (lista + stats)
+  const loadData = useCallback(
+    async (silent = false) => {
+      if (isLoadingRef.current) return;
       isLoadingRef.current = true;
+      if (!silent) setLoading(true);
 
       try {
-        setLoading(true);
-
-        const params = new URLSearchParams({
-          search: busqueda,
-          cliente: filtroCliente,
-          estado: filtroEstado,
-          ultimaVisita: filtroUltimaVisita,
-        });
-
-        // Check if we're in the browser before making API calls
-        if (typeof window === "undefined") {
-          return;
-        }
+        const qs = buildQuery();
 
         const [vehiculosResponse, statsResponse] = await Promise.all([
-          fetch(`/api/vehiculos?${params}`, {
+          fetch(`/api/vehiculos?${qs}`, {
             method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
           }),
           fetch("/api/vehiculos/stats", {
             method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
           }),
         ]);
 
-        if (!isMounted) return;
-
-        // Check if responses are ok
         if (!vehiculosResponse.ok || !statsResponse.ok) {
           throw new Error(
             `HTTP error! vehiculos: ${vehiculosResponse.status}, stats: ${statsResponse.status}`
@@ -167,52 +151,49 @@ export default function VehiculosSection({ stats }: Props) {
         const vehiculosResult = await vehiculosResponse.json();
         const statsResult = await statsResponse.json();
 
-        if (isMounted) {
-          if (vehiculosResult.success) {
-            setVehiculos(vehiculosResult.data || []);
-          } else {
-            console.error("Error en respuesta de vehículos:", vehiculosResult);
-            setVehiculos([]);
-          }
+        setVehiculos(Array.isArray(vehiculosResult?.data) ? vehiculosResult.data : []);
 
-          if (statsResult.success) {
-            setVehiculosStats(statsResult.data);
-          } else {
-            console.error("Error en respuesta de estadísticas:", statsResult);
-          }
-        }
-      } catch (error) {
+        setVehiculosStats(
+          statsResult?.data
+            ? {
+                totalVehiculos: Number(statsResult.data.totalVehiculos) || 0,
+                vehiculosActivos: Number(statsResult.data.vehiculosActivos) || 0,
+                proximoMantenimiento: Number(statsResult.data.proximoMantenimiento) || 0,
+                enTaller: Number(statsResult.data.enTaller) || 0,
+              }
+            : { totalVehiculos: 0, vehiculosActivos: 0, proximoMantenimiento: 0, enTaller: 0 }
+        );
+      } catch (error: any) {
         console.error("Error cargando datos:", error);
-        if (isMounted) {
-          // Set empty state instead of showing error immediately
-          setVehiculos([]);
-          // Only show error for real network issues, not initial load
-          if (
-            busqueda ||
-            filtroCliente ||
-            filtroEstado !== "todos" ||
-            filtroUltimaVisita !== "todos"
-          ) {
-            showErrorRef.current(
-              "Error",
-              error instanceof Error ? error.message : "Error al cargar los datos"
-            );
-          }
+        setVehiculos([]);
+        // Solo toasteamos si no es carga inicial y hay filtros/busqueda
+        if (
+          !silent &&
+          (busqueda || filtroCliente || filtroEstado !== "todos" || filtroUltimaVisita !== "todos")
+        ) {
+          showErrorRef.current("Error", error?.message || "Error al cargar los datos");
         }
       } finally {
-        if (isMounted) {
-          setLoading(false);
-          isLoadingRef.current = false;
-        }
+        setLoading(false);
+        isLoadingRef.current = false;
       }
-    }, 500); // Aumenté el debounce a 500ms
+    },
+    [busqueda, filtroCliente, filtroEstado, filtroUltimaVisita]
+  );
 
+  // ---- useEffect con debounce (sin recargar página)
+  useEffect(() => {
+    if (isLoadingRef.current) return;
+    let alive = true;
+    const t = setTimeout(() => {
+      if (!alive) return;
+      loadData();
+    }, 500);
     return () => {
-      isMounted = false;
-      clearTimeout(timeoutId);
-      isLoadingRef.current = false;
+      alive = false;
+      clearTimeout(t);
     };
-  }, [busqueda, filtroCliente, filtroEstado, filtroUltimaVisita]);
+  }, [loadData]);
 
   // Handlers
   const handleCrearVehiculo = () => {
@@ -249,8 +230,9 @@ export default function VehiculosSection({ stats }: Props) {
           selectedVehiculo ? "Vehículo actualizado correctamente" : "Vehículo creado correctamente"
         );
         setMostrarFormulario(false);
-        // Recargar datos
-        window.location.reload();
+        setSelectedVehiculo(null);
+        // refrescamos data sin recargar la página
+        await loadData(true);
       } else {
         showError("Error", result.error || "Error al guardar vehículo");
       }
@@ -261,21 +243,15 @@ export default function VehiculosSection({ stats }: Props) {
   };
 
   const handleEliminarVehiculo = async (vehiculoId: string) => {
-    if (!confirm("¿Estás seguro de que deseas desactivar este vehículo?")) {
-      return;
-    }
+    if (!confirm("¿Estás seguro de que deseas desactivar este vehículo?")) return;
 
     try {
-      const response = await fetch(`/api/vehiculos/${vehiculoId}`, {
-        method: "DELETE",
-      });
-
+      const response = await fetch(`/api/vehiculos/${vehiculoId}`, { method: "DELETE" });
       const result = await response.json();
 
       if (result.success) {
         showSuccess("Éxito", "Vehículo desactivado correctamente");
-        // Recargar datos
-        window.location.reload();
+        await loadData(true);
       } else {
         showError("Error", result.error || "Error al desactivar vehículo");
       }
@@ -298,8 +274,7 @@ export default function VehiculosSection({ stats }: Props) {
       if (result.success) {
         showSuccess("Éxito", "Vehículo creado correctamente");
         setMostrarAltaRapida(false);
-        // Recargar datos
-        window.location.reload();
+        await loadData(true);
       } else {
         showError("Error", result.error || "Error al crear vehículo");
       }
@@ -439,7 +414,7 @@ export default function VehiculosSection({ stats }: Props) {
           onEditarVehiculo={handleEditarVehiculo}
           onEliminarVehiculo={handleEliminarVehiculo}
           onVerFicha360={handleVerFicha360}
-          onRecargar={() => window.location.reload()}
+          onRecargar={() => loadData(true)}
         />
       </div>
 

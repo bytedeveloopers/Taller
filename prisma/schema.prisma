@@ -22,6 +22,17 @@ enum BlockType {
   OTHER
 }
 
+enum VehicleEstado {
+  INGRESO
+  DIAGNOSTICO
+  DESARME // Proceso desarme
+  ESPERA
+  ARMADO // Proceso armado
+  PRUEBA // En prueba
+  FINALIZADO
+  RECEPCION
+}
+
 // ===================== MODELOS =====================
 model User {
   id                   Int      @id @default(autoincrement())
@@ -65,8 +76,9 @@ model Tecnico {
   // notas internas (histórico)
   notasInternas TecnicoNota[] @relation("TecnicoNotas")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  JobOrder  JobOrder[]
 }
 
 model TecnicoBloqueo {
@@ -111,33 +123,96 @@ model TecnicoNota {
 }
 
 model Client {
-  id                 String    @id @default(uuid())
+  id String @id @default(uuid())
 
   // ================= Información Personal =================
-  name               String
-  phone              String    @unique // Asumimos que el teléfono es único
-  email              String?   @unique // Asumimos que el email es único (opcional)
-  alt_phone          String?   @map("altPhone") // Alternativo: si usas camelCase en la DB, omite @map
-  address            String?
+  name      String
+  phone     String  @unique // Asumimos que el teléfono es único
+  email     String? @unique // Asumimos que el email es único (opcional)
+  alt_phone String? @map("altPhone") // Alternativo: si usas camelCase en la DB, omite @map
+  address   String?
 
   // ================= Preferencias y Configuración =================
-  contact_preference String    @map("contactPreference") // 'PHONE', 'WHATSAPP', 'EMAIL'
+  contact_preference String  @map("contactPreference") // 'PHONE', 'WHATSAPP', 'EMAIL'
   labels             String? // Etiquetas separadas por comas (ej: "VIP,FLOTA")
   notes              String?
-  pickup_points      String?   @map("pickupPoints") // Puntos de recogida
+  pickup_points      String? @map("pickupPoints") // Puntos de recogida
 
   // ================= Consents y Estado =================
-  consents           String? // JSON de los consentimientos (ej: {"marketing": true, "sms": false})
-  is_active          Boolean   @default(true) @map("isActive") // Cliente activo
+  consents  String? // JSON de los consentimientos (ej: {"marketing": true, "sms": false})
+  is_active Boolean @default(true) @map("isActive") // Cliente activo
 
   // ================= Tiempos =================
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   // ================= Relaciones (Opcional) =================
   // job_orders       JobOrder[] // Relación con órdenes de trabajo
   // vehicles         Vehicle[]  // Relación con vehículos
+  Vehicle Vehicle[]
 
   // Puedes usar @@map para renombrar la tabla si es necesario
   @@map("Client")
+}
+
+model Vehicle {
+  id                   String        @id @default(uuid())
+  brand                String
+  model                String
+  year                 Int
+  color                String? // 👈 NUEVO (o confírmalo si ya existe)
+  kmActual             Int           @default(0)
+  licensePlate         String? // opcional: puedes borrarlo si no lo usas
+  vin                  String? // opcional: puedes borrarlo si no lo usas
+  proximoMantenimiento DateTime?
+  clienteId            String
+  cliente              Client        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  activo               Boolean       @default(true)
+  estadoActual         VehicleEstado @default(INGRESO)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  JobOrder             JobOrder[]
+  Evidencia            Evidencia[]
+}
+
+model JobOrder {
+  id        String  @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  // Asignación
+  tecnicoId Int?
+  tecnico   Tecnico? @relation(fields: [tecnicoId], references: [id], onDelete: SetNull)
+
+  // Flujo
+  estado      VehicleEstado @default(INGRESO)
+  prioridad   Int           @default(3) // 1 alta, 5 baja
+  descripcion String?
+
+  // Fechas
+  fechaIngreso DateTime  @default(now())
+  fechaSalida  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([estado])
+  @@index([tecnicoId])
+  @@map("JobOrder")
+}
+
+model Evidencia {
+  id        String  @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  titulo String?
+  url    String // ruta/URL del archivo (foto/video/pdf)
+  tipo   String? // "image/jpeg", "video/mp4", etc.
+  nota   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([vehicleId])
+  @@map("Evidencia")
 }

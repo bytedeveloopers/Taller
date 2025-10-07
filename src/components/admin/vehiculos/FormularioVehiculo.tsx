@@ -1,7 +1,7 @@
 "use client";
 
 import { DocumentTextIcon, TruckIcon, UserIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 interface Cliente {
   id: string;
@@ -12,128 +12,159 @@ interface Cliente {
 
 interface Vehiculo {
   id: string;
-  licensePlate?: string;
-  vin?: string;
   brand: string;
   model: string;
   year: number;
   color?: string;
   mileage?: number;
-  fuelType?: string;
-  transmission?: string;
-  nickname?: string;
-  notes?: string;
-  nextServiceAtDate?: string;
-  nextServiceAtKm?: number;
   customerId: string;
   isActive: boolean;
+  // (el resto puede existir en tu UI, pero no es requerido)
 }
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   vehiculo?: Vehiculo | null;
-  onSave: (vehiculoData: any) => void;
+  onSave: (vehiculoData: {
+    customerId: string;
+    brand: string;
+    model: string;
+    year: number;
+    color: string;
+    mileage: number;
+  }) => Promise<void> | void;
 }
 
+type FormState = {
+  // opcionales visibles en UI pero NO se envían
+  licensePlate: string;
+  vin: string;
+  fuelType: string;
+  transmission: string;
+  nickname: string;
+  notes: string;
+  nextServiceAtDate: string;
+  nextServiceAtKm: string;
+
+  // REQUERIDOS
+  brand: string;
+  model: string;
+  year: number | string;
+  color: string;
+  mileage: string;
+  customerId: string;
+
+  isActive: boolean; // no lo usamos al enviar, pero lo mantenemos por compatibilidad visual
+};
+
 export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }: Props) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormState>({
     licensePlate: "",
     vin: "",
-    brand: "",
-    model: "",
-    year: new Date().getFullYear(),
-    color: "",
-    mileage: "",
     fuelType: "",
     transmission: "",
     nickname: "",
     notes: "",
     nextServiceAtDate: "",
     nextServiceAtKm: "",
+
+    brand: "",
+    model: "",
+    year: new Date().getFullYear(),
+    color: "",
+    mileage: "",
     customerId: "",
+
     isActive: true,
   });
 
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<any>({});
+  const [loadingClientes, setLoadingClientes] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [busquedaCliente, setBusquedaCliente] = useState("");
 
-  // Cargar clientes
-  useEffect(() => {
-    if (isOpen) {
-      cargarClientes();
+  // ===== Helpers =====
+  const clientesSafe = useMemo(() => (Array.isArray(clientes) ? clientes : []), [clientes]);
+  const normalizePlate = (s: string) => (s ? s.trim().toUpperCase().replace(/\s+/g, "") : "");
+
+  // ===== Cargar clientes =====
+  const cargarClientes = async () => {
+    try {
+      setLoadingClientes(true);
+      const url = `/api/clients?search=${encodeURIComponent(busquedaCliente)}&limit=50&select=min`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
+      const json = await res.json();
+      const lista: Cliente[] = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+      setClientes(lista);
+    } catch (err) {
+      console.error("[FormularioVehiculo] cargarClientes error:", err);
+      setClientes([]); // fallback
+    } finally {
+      setLoadingClientes(false);
     }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    cargarClientes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  // Cargar datos del vehículo para edición
+  useEffect(() => {
+    if (!isOpen) return;
+    const t = setTimeout(() => cargarClientes(), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busquedaCliente, isOpen]);
+
+  // ===== Popular datos si es edición (solo campos importantes) =====
   useEffect(() => {
     if (vehiculo) {
-      setFormData({
-        licensePlate: vehiculo.licensePlate || "",
-        vin: vehiculo.vin || "",
-        brand: vehiculo.brand,
-        model: vehiculo.model,
-        year: vehiculo.year,
+      setFormData((prev) => ({
+        ...prev,
+        brand: vehiculo.brand || "",
+        model: vehiculo.model || "",
+        year: vehiculo.year ?? new Date().getFullYear(),
         color: vehiculo.color || "",
         mileage: vehiculo.mileage?.toString() || "",
-        fuelType: vehiculo.fuelType || "",
-        transmission: vehiculo.transmission || "",
-        nickname: vehiculo.nickname || "",
-        notes: vehiculo.notes || "",
-        nextServiceAtDate: vehiculo.nextServiceAtDate
-          ? vehiculo.nextServiceAtDate.split("T")[0]
-          : "",
-        nextServiceAtKm: vehiculo.nextServiceAtKm?.toString() || "",
-        customerId: vehiculo.customerId,
-        isActive: vehiculo.isActive,
-      });
-    } else {
-      // Reset form for new vehicle
-      setFormData({
+        customerId: vehiculo.customerId || "",
+        // mantenemos extras vacíos para no romper UI
         licensePlate: "",
         vin: "",
-        brand: "",
-        model: "",
-        year: new Date().getFullYear(),
-        color: "",
-        mileage: "",
         fuelType: "",
         transmission: "",
         nickname: "",
         notes: "",
         nextServiceAtDate: "",
         nextServiceAtKm: "",
+        isActive: vehiculo.isActive ?? true,
+      }));
+    } else {
+      setFormData({
+        brand: "",
+        model: "",
+        year: new Date().getFullYear(),
+        color: "",
+        mileage: "",
         customerId: "",
+        licensePlate: "",
+        vin: "",
+        fuelType: "",
+        transmission: "",
+        nickname: "",
+        notes: "",
+        nextServiceAtDate: "",
+        nextServiceAtKm: "",
         isActive: true,
       });
     }
     setErrors({});
   }, [vehiculo]);
 
-  const cargarClientes = async () => {
-    try {
-      const response = await fetch(`/api/clients?search=${busquedaCliente}&limit=50`);
-      const result = await response.json();
-      if (result.success) {
-        setClientes(result.data);
-      }
-    } catch (error) {
-      console.error("Error cargando clientes:", error);
-    }
-  };
-
-  useEffect(() => {
-    const debounceTimer = setTimeout(() => {
-      if (isOpen) {
-        cargarClientes();
-      }
-    }, 300);
-
-    return () => clearTimeout(debounceTimer);
-  }, [busquedaCliente, isOpen]);
-
+  // ===== Inputs =====
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
@@ -142,56 +173,55 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
       ...prev,
       [name]: type === "checkbox" ? (e.target as HTMLInputElement).checked : value,
     }));
-
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors((prev: any) => ({ ...prev, [name]: null }));
-    }
+    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: null }));
   };
 
+  // ===== Validaciones (SOLO los 6 campos) =====
   const validateForm = () => {
-    const newErrors: any = {};
+    const newErrors: Record<string, string> = {};
 
+    if (!formData.customerId) newErrors.customerId = "El cliente es requerido";
     if (!formData.brand.trim()) newErrors.brand = "La marca es requerida";
     if (!formData.model.trim()) newErrors.model = "El modelo es requerido";
-    if (!formData.year || formData.year < 1900 || formData.year > new Date().getFullYear() + 2) {
+
+    const yearNum = Number(formData.year);
+    if (!yearNum || Number.isNaN(yearNum) || yearNum < 1900 || yearNum > new Date().getFullYear() + 2) {
       newErrors.year = "Año inválido";
     }
-    if (!formData.customerId) newErrors.customerId = "El cliente es requerido";
 
-    // Validate license plate format (optional but if provided should be valid)
+    if (!formData.color.trim()) newErrors.color = "El color es requerido";
+
+    const kmNum = Number(formData.mileage);
+    if (formData.mileage === "" || Number.isNaN(kmNum) || kmNum < 0) {
+      newErrors.mileage = "Kilometraje inválido";
+    }
+
+    // Validaciones opcionales de UI (no bloquean API)
     if (formData.licensePlate && !/^[A-Z0-9-]+$/i.test(formData.licensePlate)) {
       newErrors.licensePlate = "Formato de placa inválido";
     }
-
-    // Validate VIN (optional but if provided should be 17 characters)
-    if (formData.vin && formData.vin.length !== 17) {
-      newErrors.vin = "El VIN debe tener 17 caracteres";
-    }
+    if (formData.vin && formData.vin.length !== 17) newErrors.vin = "El VIN debe tener 17 caracteres";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  // ===== Submit: solo enviamos los 6 campos =====
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
     setLoading(true);
     try {
-      // Prepare data for submission
-      const submitData = {
-        ...formData,
-        year: parseInt(formData.year.toString()),
-        mileage: formData.mileage ? parseInt(formData.mileage) : null,
-        nextServiceAtKm: formData.nextServiceAtKm ? parseInt(formData.nextServiceAtKm) : null,
-        nextServiceAtDate: formData.nextServiceAtDate || null,
+      const payload = {
+        customerId: formData.customerId,
+        brand: formData.brand.trim(),
+        model: formData.model.trim(),
+        year: parseInt(String(formData.year), 10),
+        color: formData.color.trim(),
+        mileage: parseInt(String(formData.mileage), 10),
       };
-
-      await onSave(submitData);
+      await onSave(payload);
     } catch (error) {
       console.error("Error guardando vehículo:", error);
     } finally {
@@ -212,10 +242,7 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
               {vehiculo ? "Editar Vehículo" : "Nuevo Vehículo"}
             </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-white transition-colors"
-          >
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-white transition-colors">
             <XMarkIcon className="h-6 w-6" />
           </button>
         </div>
@@ -230,9 +257,7 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Buscar Cliente *
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Buscar Cliente *</label>
                 <input
                   type="text"
                   placeholder="Buscar por nombre, teléfono o email..."
@@ -251,27 +276,26 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
                   }`}
                   required
                 >
-                  <option value="">Seleccionar cliente</option>
-                  {clientes.map((cliente) => (
+                  <option value="">{loadingClientes ? "Cargando clientes..." : "Seleccionar cliente"}</option>
+                  {clientesSafe.map((cliente) => (
                     <option key={cliente.id} value={cliente.id}>
                       {cliente.name} - {cliente.phone}
                     </option>
                   ))}
                 </select>
-                {errors.customerId && (
-                  <p className="text-red-400 text-sm mt-1">{errors.customerId}</p>
-                )}
+                {errors.customerId && <p className="text-red-400 text-sm mt-1">{errors.customerId}</p>}
               </div>
             </div>
           </div>
 
-          {/* Información Básica */}
+          {/* Información Básica (solo lo necesario es required) */}
           <div className="bg-secondary-700 rounded-lg p-4">
             <h3 className="text-lg font-medium text-white mb-4 flex items-center">
               <TruckIcon className="h-5 w-5 mr-2 text-blue-400" />
               Información del Vehículo
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Opcionales UI */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Placa</label>
                 <input
@@ -284,9 +308,7 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
                     errors.licensePlate ? "border-red-500" : "border-secondary-500"
                   }`}
                 />
-                {errors.licensePlate && (
-                  <p className="text-red-400 text-sm mt-1">{errors.licensePlate}</p>
-                )}
+                {errors.licensePlate && <p className="text-red-400 text-sm mt-1">{errors.licensePlate}</p>}
               </div>
 
               <div>
@@ -305,6 +327,7 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
                 {errors.vin && <p className="text-red-400 text-sm mt-1">{errors.vin}</p>}
               </div>
 
+              {/* Requeridos */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Marca *</label>
                 <input
@@ -344,7 +367,7 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
                   name="year"
                   value={formData.year}
                   onChange={handleInputChange}
-                  min="1900"
+                  min={1900}
                   max={new Date().getFullYear() + 2}
                   className={`w-full px-3 py-2 bg-secondary-600 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     errors.year ? "border-red-500" : "border-secondary-500"
@@ -355,34 +378,41 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Color</label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Color *</label>
                 <input
                   type="text"
                   name="color"
                   value={formData.color}
                   onChange={handleInputChange}
                   placeholder="Blanco, Negro, etc."
-                  className="w-full px-3 py-2 bg-secondary-600 border border-secondary-500 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-3 py-2 bg-secondary-600 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    errors.color ? "border-red-500" : "border-secondary-500"
+                  }`}
+                  required
                 />
+                {errors.color && <p className="text-red-400 text-sm mt-1">{errors.color}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Kilometraje</label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Kilometraje *</label>
                 <input
                   type="number"
                   name="mileage"
                   value={formData.mileage}
                   onChange={handleInputChange}
                   placeholder="0"
-                  min="0"
-                  className="w-full px-3 py-2 bg-secondary-600 border border-secondary-500 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min={0}
+                  className={`w-full px-3 py-2 bg-secondary-600 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    errors.mileage ? "border-red-500" : "border-secondary-500"
+                  }`}
+                  required
                 />
+                {errors.mileage && <p className="text-red-400 text-sm mt-1">{errors.mileage}</p>}
               </div>
 
+              {/* Extras visuales que NO se envían */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Tipo de Combustible
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Tipo de Combustible</label>
                 <select
                   name="fuelType"
                   value={formData.fuelType}
@@ -416,17 +446,15 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
             </div>
           </div>
 
-          {/* Información Adicional */}
+          {/* Información Adicional (no bloquea) */}
           <div className="bg-secondary-700 rounded-lg p-4">
             <h3 className="text-lg font-medium text-white mb-4 flex items-center">
-              <DocumentTextIcon className="h-5 w-5 mr-2 text-blue-400" />
+              <DocumentTextIcon className="text-blue-400 h-5 w-5 mr-2" />
               Información Adicional
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Apodo/Nickname
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Apodo/Nickname</label>
                 <input
                   type="text"
                   name="nickname"
@@ -438,9 +466,7 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Próximo Servicio (Fecha)
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Próximo Servicio (Fecha)</label>
                 <input
                   type="date"
                   name="nextServiceAtDate"
@@ -451,16 +477,14 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Próximo Servicio (Kilometraje)
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Próximo Servicio (Kilometraje)</label>
                 <input
                   type="number"
                   name="nextServiceAtKm"
                   value={formData.nextServiceAtKm}
                   onChange={handleInputChange}
                   placeholder="0"
-                  min="0"
+                  min={0}
                   className="w-full px-3 py-2 bg-secondary-600 border border-secondary-500 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -481,11 +505,7 @@ export default function FormularioVehiculo({ isOpen, onClose, vehiculo, onSave }
 
           {/* Actions */}
           <div className="flex items-center justify-end space-x-4 pt-6 border-t border-secondary-700">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2 text-gray-400 hover:text-white transition-colors"
-            >
+            <button type="button" onClick={onClose} className="px-6 py-2 text-gray-400 hover:text-white transition-colors">
               Cancelar
             </button>
             <button
