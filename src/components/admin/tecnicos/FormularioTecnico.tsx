@@ -1,76 +1,228 @@
 "use client";
 
-import { Technician } from "@/types";
+import type { Technician } from "@/types";
 import { PlusIcon, TrashIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+
+type BlockType = "VACATION" | "SICK_LEAVE" | "TRAINING" | "OTHER";
+
+interface BlockedDate {
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  reason: string;
+  type: BlockType;
+}
+
+interface FormState {
+  name: string;
+  phone: string;
+  email: string;
+  password: string; // solo creación
+  skills: string[];
+  capacityPerDay: number;
+  workHours: { start: string; end: string };
+  active: boolean;
+  avatarUrl: string; // compat (no se guarda)
+  notes: string;
+  mustChangePassword: boolean;
+}
 
 interface Props {
   tecnico: Technician | null;
-  onGuardar: (data: any) => void;
+  /** El padre refresca la lista o cierra el modal. Le paso también el id. */
+  onGuardar: (data: {
+    id?: number;
+    name: string;
+    email: string;
+    phone?: string;
+    password?: string;
+    skills: string[];
+    capacityPerDay: number;
+    workHours: { start: string; end: string };
+    active: boolean;
+    notes?: string;
+    mustChangePassword: boolean;
+    blockedDates: BlockedDate[];
+  }) => void;
   onCancelar: () => void;
 }
 
+// --- Helpers ---
+const API_BASE =
+  typeof window === "undefined"
+    ? ""
+    : (window.location.port === "3000"
+        ? ""
+        : (process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:3000"));
+
+function toLocalYmd(v?: any): string {
+  if (!v) return "";
+  const d = new Date(v);
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+// Helpers para detectar si la API incluyó el campo notas/notes
+const hasOwn = Object.prototype.hasOwnProperty;
+function getNotesFromApi(obj: any): string | null | undefined {
+  if (!obj) return undefined;
+  if (hasOwn.call(obj, "notas")) return obj.notas ?? "";
+  if (hasOwn.call(obj, "notes")) return obj.notes ?? "";
+  return undefined; // la API no envió el campo
+}
+
+function normalizeFromApi(tecnicoApi: any) {
+  const skillsArr: string[] = Array.isArray(tecnicoApi?.skills)
+    ? tecnicoApi.skills
+    : (tecnicoApi?.habilidades
+        ? String(tecnicoApi.habilidades).split(",").map((s: string) => s.trim()).filter(Boolean)
+        : []);
+
+  const blocked: BlockedDate[] = Array.isArray(tecnicoApi?.blockedDates)
+    ? tecnicoApi.blockedDates.map((b: any) => ({
+        startDate: toLocalYmd(b.startDate ?? b.start),
+        endDate: toLocalYmd(b.endDate ?? b.end),
+        reason: b.reason ?? "",
+        type: (b.type as BlockType) ?? "OTHER",
+      }))
+    : [];
+
+  const workStart = tecnicoApi?.horario_inicio ?? tecnicoApi?.workHours?.start ?? "08:00";
+  const workEnd   = tecnicoApi?.horario_fin ?? tecnicoApi?.workHours?.end ?? "17:00";
+
+  const emailOut = tecnicoApi?.user?.email ?? tecnicoApi?.email ?? "";
+
+  const rawNotes = getNotesFromApi(tecnicoApi);
+
+  return {
+    id: tecnicoApi?.id,
+    form: {
+      name: tecnicoApi?.nombre ?? tecnicoApi?.name ?? "",
+      phone: tecnicoApi?.telefono ?? tecnicoApi?.phone ?? "",
+      email: emailOut,
+      password: "",
+      skills: skillsArr,
+      capacityPerDay: tecnicoApi?.capacidad ?? tecnicoApi?.capacityPerDay ?? 8,
+      workHours: { start: workStart, end: workEnd },
+      active: tecnicoApi?.user?.is_active ?? tecnicoApi?.active ?? true,
+      avatarUrl: tecnicoApi?.avatarUrl ?? "",
+      notes: rawNotes ?? "", // siempre string para el textarea
+      mustChangePassword: tecnicoApi?.user?.must_change_password ?? tecnicoApi?.mustChangePassword ?? false,
+    } as FormState,
+    blockedDates: blocked,
+    // payload para notificar al padre
+    uiPayload: {
+      id: tecnicoApi?.id,
+      name: tecnicoApi?.nombre ?? tecnicoApi?.name ?? "",
+      email: emailOut,
+      phone: tecnicoApi?.telefono ?? tecnicoApi?.phone ?? undefined,
+      password: undefined,
+      skills: skillsArr,
+      capacityPerDay: tecnicoApi?.capacidad ?? tecnicoApi?.capacityPerDay ?? 8,
+      workHours: { start: workStart, end: workEnd },
+      active: tecnicoApi?.user?.is_active ?? tecnicoApi?.active ?? true,
+      notes: rawNotes ?? "", // NUNCA undefined
+      mustChangePassword: tecnicoApi?.user?.must_change_password ?? tecnicoApi?.mustChangePassword ?? false,
+      blockedDates: blocked,
+    },
+  };
+}
+
 export default function FormularioTecnico({ tecnico, onGuardar, onCancelar }: Props) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormState>({
     name: "",
     phone: "",
     email: "",
-    skills: [] as string[],
-    capacityPerDay: 5,
-    workHours: {
-      start: "08:00",
-      end: "17:00",
-    },
+    password: "",
+    skills: [],
+    capacityPerDay: 8,
+    workHours: { start: "08:00", end: "17:00" },
     active: true,
     avatarUrl: "",
     notes: "",
+    mustChangePassword: true,
   });
 
   const [newSkill, setNewSkill] = useState("");
-  const [blockedDates, setBlockedDates] = useState<
-    Array<{
-      startDate: string;
-      endDate: string;
-      reason: string;
-      type: "VACATION" | "SICK_LEAVE" | "TRAINING" | "OTHER";
-    }>
-  >([]);
+  const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([]);
+  const [mounted, setMounted] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Montaje: bloquear scroll + ESC
+  useEffect(() => {
+    setMounted(true);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancelar();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onCancelar]);
+
+  // Cargar datos al cambiar el técnico (por id)
+  const tecnicoId = (tecnico as any)?.id ?? null;
 
   useEffect(() => {
-    if (tecnico) {
+    let cancel = false;
+
+    if (!tecnicoId) {
       setFormData({
-        name: tecnico.name || "",
-        phone: tecnico.phone || "",
-        email: tecnico.email || "",
-        skills: tecnico.skills || [],
-        capacityPerDay: tecnico.capacityPerDay || 5,
-        workHours: tecnico.workHours || { start: "08:00", end: "17:00" },
-        active: tecnico.active !== undefined ? tecnico.active : true,
-        avatarUrl: tecnico.avatarUrl || "",
-        notes: tecnico.notes || "",
+        name: "",
+        phone: "",
+        email: "",
+        password: "",
+        skills: [],
+        capacityPerDay: 8,
+        workHours: { start: "08:00", end: "17:00" },
+        active: true,
+        avatarUrl: "",
+        notes: "",
+        mustChangePassword: true,
       });
-
-      // Cargar bloqueos si existen
-      if (tecnico.blockedDates) {
-        setBlockedDates(
-          tecnico.blockedDates.map((block) => ({
-            startDate: new Date(block.startDate).toISOString().split("T")[0],
-            endDate: new Date(block.endDate).toISOString().split("T")[0],
-            reason: block.reason,
-            type: block.type,
-          }))
-        );
-      }
+      setBlockedDates([]);
+      return;
     }
-  }, [tecnico]);
 
+    // 1) Hidratación rápida con lo que venga del padre (aunque venga sin 'notas')
+    const pre = normalizeFromApi(tecnico);
+    setFormData(pre.form);
+    setBlockedDates(pre.blockedDates);
+
+    // 2) Refetch al endpoint completo para traer 'notas' y fusionar
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/tecnicos/${tecnicoId}`);
+        if (!res.ok) return;
+        const full = await res.json();
+        if (cancel) return;
+
+        const normalized = normalizeFromApi(full?.tecnico ?? full);
+        setFormData(prev => ({
+          ...prev,
+          ...normalized.form, // aquí ya llega notas desde la API
+        }));
+        setBlockedDates(normalized.blockedDates);
+      } catch {
+        /* noop */
+      }
+    })();
+
+    return () => { cancel = true; };
+  }, [tecnicoId, tecnico]);
+
+  // Handlers
   const handleInputChange = (field: string, value: any) => {
     if (field.includes(".")) {
       const [parent, child] = field.split(".");
       setFormData((prev) => ({
         ...prev,
         [parent]: {
-          ...(prev[parent as keyof typeof prev] as any),
+          ...(prev as any)[parent],
           [child]: value,
         },
       }));
@@ -80,333 +232,432 @@ export default function FormularioTecnico({ tecnico, onGuardar, onCancelar }: Pr
   };
 
   const handleAddSkill = () => {
-    if (newSkill.trim() && !formData.skills.includes(newSkill.trim())) {
-      setFormData((prev) => ({
-        ...prev,
-        skills: [...prev.skills, newSkill.trim()],
-      }));
+    const s = newSkill.trim();
+    if (s && !formData.skills.includes(s)) {
+      setFormData((p) => ({ ...p, skills: [...p.skills, s] }));
       setNewSkill("");
     }
   };
-
-  const handleRemoveSkill = (skillToRemove: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      skills: prev.skills.filter((skill) => skill !== skillToRemove),
-    }));
+  const handleRemoveSkill = (skill: string) => {
+    setFormData((p) => ({ ...p, skills: p.skills.filter((x) => x !== skill) }));
   };
 
   const handleAddBlock = () => {
-    setBlockedDates((prev) => [
-      ...prev,
-      {
-        startDate: "",
-        endDate: "",
-        reason: "",
-        type: "VACATION",
-      },
-    ]);
+    setBlockedDates((p) => [...p, { startDate: "", endDate: "", reason: "", type: "VACATION" }]);
   };
-
   const handleRemoveBlock = (index: number) => {
-    setBlockedDates((prev) => prev.filter((_, i) => i !== index));
+    setBlockedDates((p) => p.filter((_, i) => i !== index));
+  };
+  const handleBlockChange = (index: number, field: keyof BlockedDate, value: any) => {
+    setBlockedDates((p) => p.map((b, i) => (i === index ? { ...b, [field]: value } : b)));
   };
 
-  const handleBlockChange = (index: number, field: string, value: any) => {
-    setBlockedDates((prev) =>
-      prev.map((block, i) => (i === index ? { ...block, [field]: value } : block))
-    );
-  };
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Validaciones básicas
-    if (!formData.name.trim() || !formData.phone.trim()) {
-      alert("Por favor completa los campos obligatorios (Nombre y Teléfono)");
+    if (!formData.name.trim() || !formData.email.trim()) {
+      alert("Por favor completa los campos obligatorios (Nombre y Email)");
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      alert("Por favor ingresa un email válido");
       return;
     }
 
-    // Preparar datos para enviar
-    const dataToSend = {
-      ...formData,
+    const patchBody = {
+      nombre: formData.name,
+      telefono: formData.phone || null,
+      email: formData.email,
+      horario_inicio: formData.workHours.start || null,
+      horario_fin: formData.workHours.end || null,
+      capacidad: formData.capacityPerDay,
+      skills: formData.skills,
+      notas: formData.notes?.trim() || null,
+      is_active: !!formData.active,
+      must_change_password: !!formData.mustChangePassword,
       blockedDates: blockedDates
-        .filter((block) => block.startDate && block.endDate && block.reason.trim())
-        .map((block) => ({
-          ...block,
-          startDate: new Date(block.startDate),
-          endDate: new Date(block.endDate),
-        })),
+        .filter((b) => b.startDate && b.endDate && b.reason.trim())
+        .map((b) => ({ ...b })),
     };
 
-    onGuardar(dataToSend);
+    const url = tecnicoId
+      ? `${API_BASE}/api/admin/tecnicos/${tecnicoId}`
+      : `${API_BASE}/api/admin/tecnicos/${encodeURIComponent(formData.email)}`;
+
+    try {
+      setSaving(true);
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patchBody),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error("PATCH técnico falló:", err);
+        alert(`No se pudo guardar: ${err?.message || "Error"}`);
+        setSaving(false);
+        return;
+      }
+
+      const json = await res.json();
+      const tecnicoApi = json?.tecnico ?? json;
+
+      // solo actualiza notes si la API lo trajo; si no, conserva lo que ya tenías
+      const incomingNotes = getNotesFromApi(tecnicoApi);
+      const normalized = normalizeFromApi(tecnicoApi);
+
+      setFormData(prev => ({
+        ...prev,
+        ...normalized.form,
+        notes: incomingNotes === undefined ? prev.notes : (incomingNotes ?? ""),
+      }));
+      setBlockedDates(normalized.blockedDates);
+
+      // Notifica al padre con notas siempre presentes (string)
+      onGuardar(normalized.uiPayload);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+  const container = typeof document !== "undefined" ? document.body : null;
+  if (!container) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[2147483647] bg-black/70 backdrop-blur-sm p-4 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="bg-secondary-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] border border-secondary-700 flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">
-            {tecnico ? "Editar Técnico" : "Nuevo Técnico"}
+        <div className="flex items-center justify-between p-6 border-b border-secondary-700 bg-secondary-800 rounded-t-lg sticky top-0 z-10">
+          <h2 className="text-xl font-semibold text-white">
+            {tecnicoId ? "Editar Técnico" : "Nuevo Técnico"}
           </h2>
           <button
             onClick={onCancelar}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 hover:text-gray-300 transition-colors"
+            type="button"
+            aria-label="Cerrar"
+            disabled={saving}
           >
             <XMarkIcon className="h-6 w-6" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Información básica */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Nombre *</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => handleInputChange("name", e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Teléfono *</label>
-              <input
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => handleInputChange("phone", e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => handleInputChange("email", e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Capacidad Diaria
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="20"
-                value={formData.capacityPerDay}
-                onChange={(e) => handleInputChange("capacityPerDay", parseInt(e.target.value))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <p className="text-xs text-gray-500 mt-1">Número máximo de trabajos simultáneos</p>
-            </div>
-          </div>
-
-          {/* Horario de trabajo */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Horario de Trabajo
-            </label>
-            <div className="grid grid-cols-2 gap-4">
+        {/* Contenido con scroll */}
+        <div className="flex-1 overflow-y-auto">
+          <form onSubmit={handleSubmit} className="p-6 space-y-6">
+            {/* Info básica */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Inicio</label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Nombre *</label>
                 <input
-                  type="time"
-                  value={formData.workHours.start}
-                  onChange={(e) => handleInputChange("workHours.start", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => handleInputChange("name", e.target.value)}
+                  className="w-full border border-secondary-600 bg-secondary-700 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                  disabled={saving}
                 />
               </div>
+
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Fin</label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Email *</label>
                 <input
-                  type="time"
-                  value={formData.workHours.end}
-                  onChange={(e) => handleInputChange("workHours.end", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => handleInputChange("email", e.target.value)}
+                  className="w-full border border-secondary-600 bg-secondary-700 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                  readOnly={!!tecnicoId}
+                  disabled={saving}
                 />
               </div>
-            </div>
-          </div>
 
-          {/* Habilidades */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Habilidades/Especialidades
-            </label>
-            <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                value={newSkill}
-                onChange={(e) => setNewSkill(e.target.value)}
-                placeholder="Agregar habilidad..."
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddSkill())}
-              />
-              <button
-                type="button"
-                onClick={handleAddSkill}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center"
-              >
-                <PlusIcon className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {formData.skills.map((skill, index) => (
-                <span
-                  key={index}
-                  className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full"
-                >
-                  {skill}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveSkill(skill)}
-                    className="text-blue-600 hover:text-blue-800"
-                  >
-                    <XMarkIcon className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Teléfono</label>
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => handleInputChange("phone", e.target.value)}
+                  className="w-full border border-secondary-600 bg-secondary-700 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={saving}
+                />
+              </div>
 
-          {/* Avatar URL */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">URL del Avatar</label>
-            <input
-              type="url"
-              value={formData.avatarUrl}
-              onChange={(e) => handleInputChange("avatarUrl", e.target.value)}
-              placeholder="https://ejemplo.com/avatar.jpg"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          {/* Bloqueos de tiempo */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <label className="block text-sm font-medium text-gray-700">
-                Bloqueos de Tiempo (Vacaciones, Licencias)
-              </label>
-              <button
-                type="button"
-                onClick={handleAddBlock}
-                className="bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 transition-colors flex items-center text-sm"
-              >
-                <PlusIcon className="h-4 w-4 mr-1" />
-                Agregar Bloqueo
-              </button>
-            </div>
-            <div className="space-y-3">
-              {blockedDates.map((block, index) => (
-                <div key={index} className="p-4 border border-gray-200 rounded-lg">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Fecha Inicio</label>
-                      <input
-                        type="date"
-                        value={block.startDate}
-                        onChange={(e) => handleBlockChange(index, "startDate", e.target.value)}
-                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Fecha Fin</label>
-                      <input
-                        type="date"
-                        value={block.endDate}
-                        onChange={(e) => handleBlockChange(index, "endDate", e.target.value)}
-                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Tipo</label>
-                      <select
-                        value={block.type}
-                        onChange={(e) => handleBlockChange(index, "type", e.target.value)}
-                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-                      >
-                        <option value="VACATION">Vacaciones</option>
-                        <option value="SICK_LEAVE">Licencia Médica</option>
-                        <option value="TRAINING">Capacitación</option>
-                        <option value="OTHER">Otro</option>
-                      </select>
-                    </div>
-                    <div className="flex items-end">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveBlock(index)}
-                        className="text-red-600 hover:text-red-800 p-1"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-2">
-                    <input
-                      type="text"
-                      value={block.reason}
-                      onChange={(e) => handleBlockChange(index, "reason", e.target.value)}
-                      placeholder="Motivo del bloqueo..."
-                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-                    />
-                  </div>
+              {!tecnicoId && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Contraseña (opcional)
+                  </label>
+                  <input
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => handleInputChange("password", e.target.value)}
+                    className="w-full border border-secondary-600 bg-secondary-700 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Si está vacía, se generará una temporal"
+                    minLength={8}
+                    disabled={saving}
+                  />
                 </div>
-              ))}
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Capacidad diaria
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={formData.capacityPerDay}
+                  onChange={(e) =>
+                    handleInputChange(
+                      "capacityPerDay",
+                      Math.max(1, Math.min(50, parseInt(e.target.value || "1", 10)))
+                    )
+                  }
+                  className="w-full border border-secondary-600 bg-secondary-700 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={saving}
+                />
+              </div>
             </div>
-          </div>
 
-          {/* Notas */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Notas Internas</label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => handleInputChange("notes", e.target.value)}
-              rows={3}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Notas adicionales sobre el técnico..."
-            />
-          </div>
+            {/* Horario */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Horario de trabajo
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Inicio</label>
+                  <input
+                    type="time"
+                    value={formData.workHours.start}
+                    onChange={(e) => handleInputChange("workHours.start", e.target.value)}
+                    className="w-full border border-secondary-600 bg-secondary-700 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={saving}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Fin</label>
+                  <input
+                    type="time"
+                    value={formData.workHours.end}
+                    onChange={(e) => handleInputChange("workHours.end", e.target.value)}
+                    className="w-full border border-secondary-600 bg-secondary-700 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={saving}
+                  />
+                </div>
+              </div>
+            </div>
 
-          {/* Estado activo */}
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="active"
-              checked={formData.active}
-              onChange={(e) => handleInputChange("active", e.target.checked)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label htmlFor="active" className="ml-2 block text-sm text-gray-900">
-              Técnico activo (puede recibir asignaciones)
-            </label>
-          </div>
+            {/* Habilidades */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Habilidades / Especialidades
+              </label>
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="text"
+                  value={newSkill}
+                  onChange={(e) => setNewSkill(e.target.value)}
+                  placeholder="Agregar habilidad..."
+                  className="flex-1 border border-secondary-600 bg-secondary-700 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddSkill();
+                    }
+                  }}
+                  disabled={saving}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddSkill}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center"
+                  disabled={saving}
+                >
+                  <PlusIcon className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {formData.skills.map((skill, idx) => (
+                  <span
+                    key={`${skill}-${idx}`}
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-blue-900/40 text-blue-200 text-sm rounded-full"
+                  >
+                    {skill}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSkill(skill)}
+                      className="text-blue-300 hover:text-blue-100"
+                      aria-label={`Quitar ${skill}`}
+                      disabled={saving}
+                    >
+                      <XMarkIcon className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
 
-          {/* Botones */}
-          <div className="flex justify-end space-x-4 pt-4 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={onCancelar}
-              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              {tecnico ? "Actualizar" : "Crear"} Técnico
-            </button>
-          </div>
-        </form>
+            {/* Bloqueos de tiempo */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-sm font-medium text-gray-300">
+                  Bloqueos de tiempo (Vacaciones, Licencias)
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAddBlock}
+                  className="bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 transition-colors flex items-center text-sm"
+                  disabled={saving}
+                >
+                  <PlusIcon className="h-4 w-4 mr-1" />
+                  Agregar bloqueo
+                </button>
+              </div>
+              <div className="space-y-3">
+                {blockedDates.map((b, i) => (
+                  <div key={i} className="p-3 bg-secondary-700 rounded-lg border border-secondary-600">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Fecha inicio</label>
+                        <input
+                          type="date"
+                          value={b.startDate}
+                          onChange={(e) => handleBlockChange(i, "startDate", e.target.value)}
+                          className="w-full border border-secondary-600 bg-secondary-600 text-white rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+                          disabled={saving}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Fecha fin</label>
+                        <input
+                          type="date"
+                          value={b.endDate}
+                          onChange={(e) => handleBlockChange(i, "endDate", e.target.value)}
+                          className="w-full border border-secondary-600 bg-secondary-600 text-white rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+                          disabled={saving}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Tipo</label>
+                        <select
+                          value={b.type}
+                          onChange={(e) => handleBlockChange(i, "type", e.target.value as BlockType)}
+                          className="w-full border border-secondary-600 bg-secondary-600 text-white rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+                          disabled={saving}
+                        >
+                          <option value="VACATION">Vacaciones</option>
+                          <option value="SICK_LEAVE">Licencia médica</option>
+                          <option value="TRAINING">Capacitación</option>
+                          <option value="OTHER">Otro</option>
+                        </select>
+                      </div>
+                      <div className="md:col-span-1 flex items-end">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBlock(i)}
+                          className="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700 transition-colors flex items-center text-sm"
+                          disabled={saving}
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="md:col-span-5">
+                        <input
+                          type="text"
+                          value={b.reason}
+                          onChange={(e) => handleBlockChange(i, "reason", e.target.value)}
+                          placeholder="Motivo del bloqueo..."
+                          className="w-full border border-secondary-600 bg-secondary-600 text-white rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+                          disabled={saving}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {blockedDates.length === 0 && (
+                  <div className="text-center py-2 text-gray-400 text-sm">
+                    No hay bloqueos configurados
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Notas + switches */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Notas internas</label>
+              <textarea
+                rows={3}
+                value={formData.notes}
+                onChange={(e) => handleInputChange("notes", e.target.value)}
+                className="w-full border border-secondary-600 bg-secondary-700 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Notas adicionales sobre el técnico..."
+                disabled={saving}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="active"
+                  checked={formData.active}
+                  onChange={(e) => handleInputChange("active", e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  disabled={saving}
+                />
+                <label htmlFor="active" className="ml-2 text-sm text-gray-300">
+                  Técnico activo (puede recibir asignaciones)
+                </label>
+              </div>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="mustChangePassword"
+                  checked={formData.mustChangePassword}
+                  onChange={(e) => handleInputChange("mustChangePassword", e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  disabled={saving}
+                />
+                <label htmlFor="mustChangePassword" className="ml-2 text-sm text-gray-300">
+                  Debe cambiar contraseña en el próximo login
+                </label>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-secondary-700 pt-4 mt-4">
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={onCancelar}
+                  className="px-6 py-2 border border-secondary-600 text-gray-300 rounded-lg hover:bg-secondary-700 transition-colors"
+                  disabled={saving}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  disabled={saving}
+                >
+                  {saving ? "Guardando..." : (tecnicoId ? "Actualizar" : "Crear")} Técnico
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </div>,
+    container
   );
 }

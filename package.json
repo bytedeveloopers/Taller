@@ -37,7 +37,8 @@
     "node-cron": "^4.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^2.5.4"
+    "tailwind-merge": "^2.5.4",
+    "zod": "^4.1.11"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -46,7 +47,9 @@
     "@types/node": "^22.8.7",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "eslint": "^8",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "eslint": "^8.57.1",
     "eslint-config-next": "15.5.3",
     "postcss": "^8.4.49",
     "prisma": "^6.16.3",

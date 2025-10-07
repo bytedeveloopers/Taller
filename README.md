@@ -203,6 +203,58 @@ TALLER_NAME="Tu Taller Mecánico"
 TALLER_EMAIL="contacto@tutaller.com"
 ```
 
+---
+
+## 🧪 BD de Laboratorio (sin datos)
+
+### Para clonar solo la estructura desde una BD de producción a una BD de laboratorio:
+
+#### 1) Clonar estructura (Linux/Mac)
+
+```bash
+./scripts/db/clone-structure.sh PRODBD taller_lab localhost root secret
+```
+
+#### 2) Clonar estructura (Windows)
+
+```cmd
+scripts\db\clone-structure.bat PRODBD taller_lab localhost root secret
+```
+
+#### 3) Apuntar a la BD de laboratorio
+
+```bash
+cp .env.lab.example .env
+# (ajusta usuario/clave si es necesario)
+```
+
+#### 4) Resetear y sembrar datos de prueba
+
+**Linux/Mac:**
+
+```bash
+./scripts/db/reset-lab.sh
+```
+
+**Windows:**
+
+```cmd
+scripts\db\reset-lab.bat
+```
+
+#### O manualmente:
+
+```bash
+npx prisma migrate reset --force
+npx tsx prisma/seed-lab.ts
+```
+
+### Datos de acceso de laboratorio:
+
+- **Admin**: admin@taller.com / admin123 (⚠️ SOLO admin, sin datos de demo)
+
+---
+
 ## 🏗️ Estado del Proyecto
 
 ### ✅ Completado

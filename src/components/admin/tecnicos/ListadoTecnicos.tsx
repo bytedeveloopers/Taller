@@ -41,21 +41,17 @@ export default function ListadoTecnicos({
   onVerAgenda,
   onToggleEstado,
 }: Props) {
-  // Función para obtener el color del semáforo de carga
+  // Semáforo para la barra
   const getLoadColor = (loadPercentage: number) => {
     if (loadPercentage <= 50) return "bg-green-500";
     if (loadPercentage <= 80) return "bg-yellow-500";
     return "bg-red-500";
   };
-
-  // Función para obtener el texto del estado de carga
   const getLoadStatus = (loadPercentage: number) => {
     if (loadPercentage <= 50) return "Baja";
     if (loadPercentage <= 80) return "Media";
     return "Alta";
   };
-
-  // Función para obtener el color del estado de carga
   const getLoadStatusColor = (loadPercentage: number) => {
     if (loadPercentage <= 50) return "text-green-600 bg-green-100";
     if (loadPercentage <= 80) return "text-yellow-600 bg-yellow-100";
@@ -151,9 +147,26 @@ export default function ListadoTecnicos({
           </thead>
           <tbody className="bg-secondary-700 divide-y divide-secondary-600">
             {tecnicos.map((tecnico) => {
-              const currentLoad = tecnico.currentLoad || 0;
-              const loadPercentage =
-                tecnico.capacityPerDay > 0 ? (currentLoad / tecnico.capacityPerDay) * 100 : 0;
+              // Normaliza capacidad y carga desde posibles aliases:
+              const capacity =
+                Number((tecnico as any).capacidad ?? tecnico.capacityPerDay ?? 0) || 0;
+              const currentLoad =
+                Number(
+                  (tecnico as any).carga ??
+                    (tecnico as any).cargaActual ??
+                    (tecnico as any).jobsToday ??
+                    (tecnico as any).currentLoad ??
+                    0
+                ) || 0;
+
+              // % sobre la capacidad (100% = capacidad)
+              const pct = Math.min(
+                100,
+                Math.max(
+                  0,
+                  Math.round(capacity > 0 ? (currentLoad / Math.max(1, capacity)) * 100 : 0)
+                )
+              );
 
               return (
                 <tr key={tecnico.id} className="hover:bg-secondary-600">
@@ -182,9 +195,11 @@ export default function ListadoTecnicos({
                       </div>
                     </div>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                     {tecnico.phone}
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex flex-wrap gap-1">
                       {tecnico.skills.slice(0, 3).map((skill, index) => (
@@ -202,34 +217,37 @@ export default function ListadoTecnicos({
                       )}
                     </div>
                   </td>
+
+                  {/* Capacidad (normalizada) */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                    {tecnico.capacityPerDay} trabajos/día
+                    {capacity} trabajos/día
                   </td>
+
+                  {/* CARGA ACTUAL: muestra X/100% y barra basada en pct */}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-2">
                       <div className="flex-1">
                         <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-                          <span>
-                            {currentLoad}/{tecnico.capacityPerDay}
-                          </span>
-                          <span>{Math.round(loadPercentage)}%</span>
-                        </div>
+                          {/* <- AQUÍ el cambio: X/100% */}
+                          <span>{pct}/100%</span>
+                          </div>
                         <div className="w-full bg-secondary-600 rounded-full h-2">
                           <div
-                            className={`h-2 rounded-full ${getLoadColor(loadPercentage)}`}
-                            style={{ width: `${Math.min(loadPercentage, 100)}%` }}
-                          ></div>
+                            className={`h-2 rounded-full ${getLoadColor(pct)}`}
+                            style={{ width: `${pct}%` }}
+                          />
                         </div>
                       </div>
                       <span
                         className={`px-2 py-1 text-xs font-medium rounded-full ${getLoadStatusColor(
-                          loadPercentage
+                          pct
                         )}`}
                       >
-                        {getLoadStatus(loadPercentage)}
+                        {getLoadStatus(pct)}
                       </span>
                     </div>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap">
                     <label className="inline-flex items-center">
                       <input
@@ -247,6 +265,7 @@ export default function ListadoTecnicos({
                       </span>
                     </label>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                     <button
                       onClick={() => onVerFicha360(tecnico)}

@@ -1,218 +1,105 @@
-import { PrismaClient } from "@prisma/client";
-import { NextRequest, NextResponse } from "next/server";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { prisma } from "@/lib/prisma";
 
-const prisma = new PrismaClient();
+export const dynamic = "force-dynamic";
 
-// GET /api/tecnicos - Listar técnicos con filtros
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const search = searchParams.get("search") || "";
-    const estado = searchParams.get("estado") || "todos";
-    const habilidades = searchParams.get("habilidades") || "";
-    const carga = searchParams.get("carga") || "todos";
+// GET /api/admin/tecnicos?search=&estado=todos|activo|inactivo&habilidades=&carga=todos
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const search = (searchParams.get("search") || "").trim();
+  const estado = (searchParams.get("estado") || "todos").toLowerCase();
+  const habilidad = (searchParams.get("habilidades") || "").trim();
 
-    console.log("🔍 Buscando técnicos con filtros:", { search, estado, habilidades, carga });
+  const where: any = {
+    ...(search
+      ? {
+          OR: [
+            { nombre: { contains: search } },
+            { telefono: { contains: search } },
+            { user: { email: { contains: search } } },
+          ],
+        }
+      : {}),
+    ...(habilidad ? { especialidad: { contains: habilidad } } : {}),
+    ...(estado === "activo" ? { user: { is_active: true } } : {}),
+    ...(estado === "inactivo" ? { user: { is_active: false } } : {}),
+  };
 
-    // Construir condiciones de filtrado
-    const whereConditions: any = {};
+  const rows = await prisma.technician.findMany({
+    where,
+    include: { user: true },
+    orderBy: { id: "desc" },
+  });
 
-    // Filtro por búsqueda (nombre o teléfono)
-    if (search) {
-      whereConditions.OR = [
-        { name: { contains: search, mode: "insensitive" } },
-        { phone: { contains: search } },
-        { email: { contains: search, mode: "insensitive" } },
-      ];
-    }
+  const data = rows.map((t) => ({
+    id: t.id,
+    nombre: t.nombre,
+    telefono: t.telefono,
+    especialidad: t.especialidad,
+    horario_inicio: t.horario_inicio,
+    horario_fin: t.horario_fin,
+    user: {
+      id: t.user.id,
+      email: t.user.email,
+      is_active: t.user.is_active,
+      must_change_password: t.user.must_change_password,
+    },
+  }));
 
-    // Filtro por estado activo/inactivo
-    if (estado !== "todos") {
-      whereConditions.active = estado === "activo";
-    }
-
-    // Filtro por habilidades (simulado - en la implementación real sería un campo JSON)
-    if (habilidades) {
-      // Por ahora simulamos que todas las habilidades están disponibles
-      // En implementación real: whereConditions.skills = { has: habilidades };
-    }
-
-    const tecnicos = await prisma.user.findMany({
-      where: {
-        role: "TECHNICIAN",
-        ...whereConditions,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { name: "asc" },
-    });
-
-    // Simular datos adicionales que vendrían de la tabla technicians
-    const tecnicosConDatos = tecnicos.map((tecnico) => ({
-      id: tecnico.id,
-      name: tecnico.name,
-      phone: generatePhone(), // Simulado
-      email: tecnico.email,
-      skills: generateSkills(), // Simulado
-      capacityPerDay: Math.floor(Math.random() * 5) + 3, // 3-8 trabajos
-      currentLoad: Math.floor(Math.random() * 6), // 0-5 trabajos actuales
-      workHours: {
-        start: "08:00",
-        end: "17:00",
-      },
-      active: tecnico.isActive,
-      avatarUrl: null,
-      notes: "",
-      createdAt: tecnico.createdAt,
-      updatedAt: tecnico.updatedAt,
-    }));
-
-    // Aplicar filtro de carga si es necesario
-    let tecnicosFiltrados = tecnicosConDatos;
-    if (carga !== "todos") {
-      tecnicosFiltrados = tecnicosConDatos.filter((tecnico) => {
-        const loadPercentage = (tecnico.currentLoad / tecnico.capacityPerDay) * 100;
-        if (carga === "baja") return loadPercentage <= 50;
-        if (carga === "media") return loadPercentage > 50 && loadPercentage <= 80;
-        if (carga === "alta") return loadPercentage > 80;
-        return true;
-      });
-    }
-
-    console.log(`✅ Encontrados ${tecnicosFiltrados.length} técnicos`);
-
-    return NextResponse.json({
-      success: true,
-      data: tecnicosFiltrados,
-      message: `Se encontraron ${tecnicosFiltrados.length} técnicos`,
-    });
-  } catch (error) {
-    console.error("❌ Error obteniendo técnicos:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Error interno del servidor",
-        details: error instanceof Error ? error.message : "Error desconocido",
-      },
-      { status: 500 }
-    );
-  }
+  return Response.json(data);
 }
 
-// POST /api/tecnicos - Crear nuevo técnico
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const {
-      name,
-      phone,
+// POST /api/admin/tecnicos
+export async function POST(req: Request) {
+  const body = (await req.json()) as any;
+
+  const nombre = String(body?.nombre || "").trim();
+  const email = String(body?.email || "").trim();
+  if (!nombre || !email) {
+    return Response.json({ message: "nombre y email son obligatorios" }, { status: 400 });
+  }
+
+  const user = await prisma.user.create({
+    data: {
       email,
-      skills,
-      capacityPerDay,
-      workHours,
-      active,
-      avatarUrl,
-      notes,
-      blockedDates,
-    } = body;
+      is_active: body?.is_active ?? true,
+      must_change_password: body?.must_change_password ?? true,
+    },
+  });
 
-    console.log("➕ Creando nuevo técnico:", { name, phone, email });
+  const tecnico = await prisma.technician.create({
+    data: {
+      nombre,
+      telefono: body?.telefono || null,
+      especialidad: body?.especialidad || null,
+      horario_inicio: body?.horario_inicio || null,
+      horario_fin: body?.horario_fin || null,
+      userId: user.id,
+    },
+    include: { user: true },
+  });
 
-    // Validaciones
-    if (!name?.trim() || !phone?.trim()) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Nombre y teléfono son obligatorios",
+  const auto_password = body?.password ? undefined : "Temp12345!"; // demo
+
+  return Response.json(
+    {
+      ok: true,
+      tecnico: {
+        id: tecnico.id,
+        nombre: tecnico.nombre,
+        telefono: tecnico.telefono,
+        especialidad: tecnico.especialidad,
+        horario_inicio: tecnico.horario_inicio,
+        horario_fin: tecnico.horario_fin,
+        user: {
+          id: tecnico.user.id,
+          email: tecnico.user.email,
+          is_active: tecnico.user.is_active,
+          must_change_password: tecnico.user.must_change_password,
         },
-        { status: 400 }
-      );
-    }
-
-    // Crear usuario técnico en users
-    const user = await prisma.user.create({
-      data: {
-        email: email || `${phone}@taller.local`,
-        password: "temp123", // Password temporal - en producción debería ser hasheado
-        name: name.trim(),
-        role: "TECHNICIAN",
-        isActive: active !== false,
       },
-    });
-
-    // En una implementación real, aquí crearíamos el registro en la tabla technicians
-    // con todos los datos adicionales como skills, capacityPerDay, etc.
-
-    console.log("✅ Técnico creado exitosamente con ID:", user.id);
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        id: user.id,
-        name: user.name,
-        phone,
-        email: user.email,
-        skills: skills || [],
-        capacityPerDay: capacityPerDay || 5,
-        workHours: workHours || { start: "08:00", end: "17:00" },
-        active: user.isActive,
-        avatarUrl: avatarUrl || null,
-        notes: notes || "",
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      },
-      message: "Técnico creado exitosamente",
-    });
-  } catch (error) {
-    console.error("❌ Error creando técnico:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Error interno del servidor",
-        details: error instanceof Error ? error.message : "Error desconocido",
-      },
-      { status: 500 }
-    );
-  }
-}
-
-// Funciones auxiliares para simular datos
-function generatePhone(): string {
-  const prefixes = ["3", "6", "9"];
-  const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-  const number = Math.floor(Math.random() * 900000000) + 100000000;
-  return `${prefix}${number}`;
-}
-
-function generateSkills(): string[] {
-  const allSkills = [
-    "Motor",
-    "Transmisión",
-    "Frenos",
-    "Electricidad",
-    "Aire Acondicionado",
-    "Suspensión",
-    "Carrocería",
-    "Diagnóstico",
-    "Soldadura",
-    "Pintura",
-  ];
-
-  const numSkills = Math.floor(Math.random() * 4) + 2; // 2-5 habilidades
-  const selectedSkills: string[] = [];
-
-  for (let i = 0; i < numSkills; i++) {
-    const skill = allSkills[Math.floor(Math.random() * allSkills.length)];
-    if (!selectedSkills.includes(skill)) {
-      selectedSkills.push(skill);
-    }
-  }
-
-  return selectedSkills;
+      auto_password,
+    },
+    { status: 201 }
+  );
 }

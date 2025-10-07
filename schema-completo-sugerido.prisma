@@ -1,0 +1,382 @@
+// Schema Prisma completo sugerido para sistema de taller
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ===== AUTENTICACIÓN Y USUARIOS =====
+model User {
+  id                   Int       @id @default(autoincrement())
+  email                String    @unique
+  password             String
+  nombre               String
+  role                 UserRole  @default(CLIENTE)
+  is_active            Boolean   @default(true)
+  must_change_password Boolean   @default(true)
+  phone                String?
+
+  // Relaciones
+  tecnico              Tecnico?
+  cliente              Cliente?
+  auditLogs            AuditLog[]
+
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+enum UserRole {
+  ADMIN
+  TECNICO
+  RECEPCIONISTA
+  CLIENTE
+}
+
+// ===== TÉCNICOS =====
+model Tecnico {
+  id               Int      @id @default(autoincrement())
+  nombre           String
+  telefono         String?
+  especialidad     String?
+  horario_inicio   String?
+  horario_fin      String?
+  nivel_experiencia String? // Junior, Senior, Expert
+  certificaciones  String? // JSON string con certificaciones
+
+  // Relación con User
+  userId           Int      @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Relaciones con trabajo
+  ordenesAsignadas OrdenTrabajo[]
+  tareas           TareaTecnico[]
+  evaluaciones     EvaluacionTecnico[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ===== CLIENTES Y VEHÍCULOS =====
+model Cliente {
+  id        Int      @id @default(autoincrement())
+  nombre    String
+  telefono  String?
+  direccion String?
+  email     String?
+
+  // Relación con User (opcional)
+  userId    Int?     @unique
+  user      User?    @relation(fields: [userId], references: [id])
+
+  // Relaciones
+  vehiculos Vehiculo[]
+  citas     Cita[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Vehiculo {
+  id          Int    @id @default(autoincrement())
+  marca       String
+  modelo      String
+  año         Int?
+  placa       String @unique
+  color       String?
+  kilometraje Int?
+
+  // Relación con cliente
+  clienteId   Int
+  cliente     Cliente @relation(fields: [clienteId], references: [id])
+
+  // Relaciones
+  citas       Cita[]
+  ordenes     OrdenTrabajo[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ===== SISTEMA DE CITAS =====
+model Cita {
+  id          Int        @id @default(autoincrement())
+  fecha       DateTime
+  hora        String
+  descripcion String?
+  estado      EstadoCita @default(PROGRAMADA)
+
+  // Relaciones
+  clienteId   Int
+  vehiculoId  Int
+  cliente     Cliente  @relation(fields: [clienteId], references: [id])
+  vehiculo    Vehiculo @relation(fields: [vehiculoId], references: [id])
+
+  // Puede generar una orden de trabajo
+  ordenTrabajo OrdenTrabajo?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum EstadoCita {
+  PROGRAMADA
+  CONFIRMADA
+  EN_PROCESO
+  COMPLETADA
+  CANCELADA
+}
+
+// ===== ÓRDENES DE TRABAJO =====
+model OrdenTrabajo {
+  id               Int                @id @default(autoincrement())
+  numero           String             @unique // OT-2024-001
+  descripcion      String
+  estado           EstadoOrden        @default(CREADA)
+  prioridad        Prioridad          @default(MEDIA)
+  fecha_inicio     DateTime?
+  fecha_fin        DateTime?
+  costo_estimado   Decimal?           @db.Decimal(10,2)
+  costo_final      Decimal?           @db.Decimal(10,2)
+  observaciones    String?
+
+  // Relaciones
+  vehiculoId       Int
+  vehiculo         Vehiculo           @relation(fields: [vehiculoId], references: [id])
+
+  citaId           Int?               @unique
+  cita             Cita?              @relation(fields: [citaId], references: [id])
+
+  tecnicoId        Int?
+  tecnico          Tecnico?           @relation(fields: [tecnicoId], references: [id])
+
+  // Sub-elementos
+  tareas           TareaTecnico[]
+  materiales       MaterialUtilizado[]
+  evidencias       Evidencia[]
+  fases            FaseOrden[]
+
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+enum EstadoOrden {
+  CREADA
+  ASIGNADA
+  EN_PROCESO
+  EN_REVISION
+  COMPLETADA
+  ENTREGADA
+  CANCELADA
+}
+
+enum Prioridad {
+  BAJA
+  MEDIA
+  ALTA
+  URGENTE
+}
+
+// ===== FASES DE TRABAJO =====
+model FaseOrden {
+  id               Int            @id @default(autoincrement())
+  nombre           String         // "Diagnóstico", "Reparación", "Pruebas"
+  descripcion      String?
+  estado           EstadoFase     @default(PENDIENTE)
+  orden            Int            // Para ordenar las fases
+  fecha_inicio     DateTime?
+  fecha_fin        DateTime?
+  tiempo_estimado  Int?           // minutos
+  tiempo_real      Int?           // minutos
+
+  // Relación con orden
+  ordenTrabajoId   Int
+  ordenTrabajo     OrdenTrabajo   @relation(fields: [ordenTrabajoId], references: [id])
+
+  // Checklist de fase
+  checklist        ChecklistItem[]
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+enum EstadoFase {
+  PENDIENTE
+  EN_PROCESO
+  COMPLETADA
+  BLOQUEADA
+}
+
+model ChecklistItem {
+  id          Int       @id @default(autoincrement())
+  descripcion String
+  completado  Boolean   @default(false)
+  orden       Int
+
+  faseId      Int
+  fase        FaseOrden @relation(fields: [faseId], references: [id])
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// ===== TAREAS DE TÉCNICOS =====
+model TareaTecnico {
+  id               Int            @id @default(autoincrement())
+  descripcion      String
+  estado           EstadoTarea    @default(PENDIENTE)
+  tiempo_estimado  Int?           // minutos
+  tiempo_real      Int?           // minutos
+
+  // Relaciones
+  tecnicoId        Int
+  tecnico          Tecnico        @relation(fields: [tecnicoId], references: [id])
+
+  ordenTrabajoId   Int
+  ordenTrabajo     OrdenTrabajo   @relation(fields: [ordenTrabajoId], references: [id])
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+enum EstadoTarea {
+  PENDIENTE
+  EN_PROCESO
+  COMPLETADA
+  PAUSADA
+}
+
+// ===== MATERIALES E INVENTARIO =====
+model Material {
+  id               Int                 @id @default(autoincrement())
+  nombre           String
+  descripcion      String?
+  codigo           String              @unique
+  precio_unitario  Decimal             @db.Decimal(10,2)
+  stock_actual     Int                 @default(0)
+  stock_minimo     Int                 @default(0)
+  unidad_medida    String              // "pieza", "litro", "metro"
+  categoria        String?
+
+  // Relaciones
+  utilizados       MaterialUtilizado[]
+
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+}
+
+model MaterialUtilizado {
+  id               Int          @id @default(autoincrement())
+  cantidad         Int
+  precio_unitario  Decimal      @db.Decimal(10,2)
+  subtotal         Decimal      @db.Decimal(10,2)
+
+  // Relaciones
+  materialId       Int
+  material         Material     @relation(fields: [materialId], references: [id])
+
+  ordenTrabajoId   Int
+  ordenTrabajo     OrdenTrabajo @relation(fields: [ordenTrabajoId], references: [id])
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+// ===== EVIDENCIAS =====
+model Evidencia {
+  id               Int          @id @default(autoincrement())
+  tipo             TipoEvidencia
+  archivo_url      String       // ruta del archivo
+  descripcion      String?
+  tomada_por       String?      // nombre del técnico
+
+  // Relación con orden
+  ordenTrabajoId   Int
+  ordenTrabajo     OrdenTrabajo @relation(fields: [ordenTrabajoId], references: [id])
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+enum TipoEvidencia {
+  FOTO_ANTES
+  FOTO_DESPUES
+  VIDEO
+  DOCUMENTO
+  REPORTE
+}
+
+// ===== EVALUACIONES =====
+model EvaluacionTecnico {
+  id               Int      @id @default(autoincrement())
+  calificacion     Int      // 1-5
+  comentarios      String?
+  criterios        String   // JSON con criterios evaluados
+
+  // Relación con técnico
+  tecnicoId        Int
+  tecnico          Tecnico  @relation(fields: [tecnicoId], references: [id])
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ===== AUDITORÍA =====
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  accion      String   // "CREATE", "UPDATE", "DELETE"
+  tabla       String   // nombre de la tabla afectada
+  registro_id Int?     // ID del registro afectado
+  datos_antes String?  // JSON con datos anteriores
+  datos_nuevos String? // JSON con datos nuevos
+  ip_address  String?
+  user_agent  String?
+
+  // Relación con usuario
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+
+  createdAt   DateTime @default(now())
+}
+
+// ===== CONFIGURACIÓN DEL SISTEMA =====
+model ConfiguracionSistema {
+  id          Int      @id @default(autoincrement())
+  clave       String   @unique
+  valor       String
+  descripcion String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ===== NOTIFICACIONES =====
+model Notificacion {
+  id          Int               @id @default(autoincrement())
+  titulo      String
+  mensaje     String
+  tipo        TipoNotificacion
+  leida       Boolean           @default(false)
+  datos       String?           // JSON con datos adicionales
+
+  // Para quien es la notificación
+  usuario_id  Int?
+  role_target UserRole?         // o para un rol específico
+
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+enum TipoNotificacion {
+  INFO
+  WARNING
+  ERROR
+  SUCCESS
+  CITA_PROGRAMADA
+  ORDEN_ASIGNADA
+  ORDEN_COMPLETADA
+  MATERIAL_BAJO_STOCK
+}
