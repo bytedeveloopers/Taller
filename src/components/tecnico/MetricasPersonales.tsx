@@ -6,15 +6,22 @@ import {
   ExclamationTriangleIcon,
   TrophyIcon,
 } from "@heroicons/react/24/outline";
+import { useEffect, useState } from "react";
 
 export default function MetricasPersonales() {
+  // ← Evita hydration mismatch
+  const [lastUpdated, setLastUpdated] = useState<string>("");
+
+  useEffect(() => {
+    setLastUpdated(new Date().toLocaleString());
+    // Si quisieras refrescar cada minuto:
+    // const id = setInterval(() => setLastUpdated(new Date().toLocaleString()), 60_000);
+    // return () => clearInterval(id);
+  }, []);
+
   // Datos simulados - en producción vendrían de la API
   const metricas = {
-    ordenesCompletadas: {
-      hoy: 3,
-      semana: 18,
-      mes: 76,
-    },
+    ordenesCompletadas: { hoy: 3, semana: 18, mes: 76 },
     tiempoPromedio: {
       porOrden: 4.2, // horas
       porEstado: {
@@ -38,11 +45,7 @@ export default function MetricasPersonales() {
         { motivo: "Error en diagnóstico", cantidad: 1 },
       ],
     },
-    eficiencia: {
-      puntuacion: 92,
-      ranking: 3,
-      totalTecnicos: 12,
-    },
+    eficiencia: { puntuacion: 92, ranking: 3, totalTecnicos: 12 },
   };
 
   const datosGrafico = [
@@ -61,7 +64,7 @@ export default function MetricasPersonales() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-white">Mis Métricas</h1>
         <div className="text-sm text-gray-300">
-          Última actualización: {new Date().toLocaleString()}
+          Última actualización: {lastUpdated || "—"}
         </div>
       </div>
 
@@ -71,7 +74,9 @@ export default function MetricasPersonales() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-300">Órdenes Hoy</p>
-              <p className="text-3xl font-bold text-white">{metricas.ordenesCompletadas.hoy}</p>
+              <p className="text-3xl font-bold text-white">
+                {metricas.ordenesCompletadas.hoy}
+              </p>
             </div>
             <div className="p-3 bg-blue-900/50 rounded-full">
               <CheckCircleIcon className="h-6 w-6 text-blue-400" />
@@ -84,7 +89,9 @@ export default function MetricasPersonales() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-300">Tiempo Promedio</p>
-              <p className="text-3xl font-bold text-white">{metricas.tiempoPromedio.porOrden}h</p>
+              <p className="text-3xl font-bold text-white">
+                {metricas.tiempoPromedio.porOrden}h
+              </p>
             </div>
             <div className="p-3 bg-green-900/50 rounded-full">
               <ClockIcon className="h-6 w-6 text-green-400" />
@@ -107,7 +114,9 @@ export default function MetricasPersonales() {
           </div>
           <div className="mt-2 text-sm text-gray-300">
             {metricas.cumplimientoSLA.dentroTiempo}/
-            {metricas.cumplimientoSLA.dentroTiempo + metricas.cumplimientoSLA.fuseraTiempo} órdenes
+            {metricas.cumplimientoSLA.dentroTiempo +
+              metricas.cumplimientoSLA.fuseraTiempo}{" "}
+            órdenes
           </div>
         </div>
 
@@ -115,7 +124,9 @@ export default function MetricasPersonales() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-300">Retrabajos</p>
-              <p className="text-3xl font-bold text-white">{metricas.retrabajos.porcentaje}%</p>
+              <p className="text-3xl font-bold text-white">
+                {metricas.retrabajos.porcentaje}%
+              </p>
             </div>
             <div className="p-3 bg-red-900/50 rounded-full">
               <ExclamationTriangleIcon className="h-6 w-6 text-red-400" />
@@ -134,7 +145,7 @@ export default function MetricasPersonales() {
           <h3 className="text-lg font-semibold text-white mb-6">Rendimiento Semanal</h3>
 
           <div className="space-y-4">
-            {datosGrafico.map((dia, index) => (
+            {datosGrafico.map((dia) => (
               <div key={dia.dia} className="flex items-center space-x-4">
                 <div className="w-12 text-sm font-medium text-gray-300">{dia.dia}</div>
 
@@ -168,11 +179,11 @@ export default function MetricasPersonales() {
                   <div className="w-32 bg-secondary-700 rounded-full h-2">
                     <div
                       className="bg-gradient-to-r from-blue-400 to-blue-500 h-2 rounded-full"
-                      style={{ width: `${Math.min((tiempo / 180) * 100, 100)}%` }}
+                      style={{ width: `${Math.min((Number(tiempo) / 180) * 100, 100)}%` }}
                     />
                   </div>
                   <span className="text-sm font-medium text-white w-12 text-right">
-                    {tiempo < 60 ? `${tiempo}m` : `${(tiempo / 60).toFixed(1)}h`}
+                    {Number(tiempo) < 60 ? `${tiempo}m` : `${(Number(tiempo) / 60).toFixed(1)}h`}
                   </span>
                 </div>
               </div>
@@ -270,12 +281,16 @@ export default function MetricasPersonales() {
           <div>
             <div className="flex justify-between text-sm mb-2">
               <span className="text-gray-300">Órdenes completadas</span>
-              <span className="font-medium text-white">{metricas.ordenesCompletadas.mes}/80</span>
+              <span className="font-medium text-white">
+                {metricas.ordenesCompletadas.mes}/80
+              </span>
             </div>
             <div className="w-full bg-secondary-700 rounded-full h-2">
               <div
                 className="bg-blue-400 h-2 rounded-full"
-                style={{ width: `${(metricas.ordenesCompletadas.mes / 80) * 100}%` }}
+                style={{
+                  width: `${(metricas.ordenesCompletadas.mes / 80) * 100}%`,
+                }}
               />
             </div>
           </div>
@@ -290,20 +305,26 @@ export default function MetricasPersonales() {
             <div className="w-full bg-secondary-700 rounded-full h-2">
               <div
                 className="bg-yellow-400 h-2 rounded-full"
-                style={{ width: `${(metricas.cumplimientoSLA.porcentaje / 90) * 100}%` }}
+                style={{
+                  width: `${(metricas.cumplimientoSLA.porcentaje / 90) * 100}%`,
+                }}
               />
             </div>
           </div>
 
           <div>
-            <div className="flex justify-between text-sm mb-2">
+            <div className="flex justify_between text-sm mb-2">
               <span className="text-gray-300">Retrabajos</span>
-              <span className="font-medium text-white">{metricas.retrabajos.porcentaje}%/5%</span>
+              <span className="font-medium text-white">
+                {metricas.retrabajos.porcentaje}%/5%
+              </span>
             </div>
             <div className="w-full bg-secondary-700 rounded-full h-2">
               <div
                 className="bg-red-400 h-2 rounded-full"
-                style={{ width: `${(metricas.retrabajos.porcentaje / 5) * 100}%` }}
+                style={{
+                  width: `${(metricas.retrabajos.porcentaje / 5) * 100}%`,
+                }}
               />
             </div>
           </div>

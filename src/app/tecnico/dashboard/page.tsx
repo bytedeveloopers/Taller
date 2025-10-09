@@ -1,10 +1,7 @@
-import InicioTecnico from "@/components/tecnico/InicioTecnico";
-import TecnicoLayout from "@/components/tecnico/TecnicoLayout";
-
-export default function TecnicoDashboard() {
+export default function Page() {
   return (
-    <TecnicoLayout>
-      <InicioTecnico />
-    </TecnicoLayout>
+    <div style={{ padding: 24, color: "#fff", background: "#111" }}>
+      OK — /tecnico/dashboard (App Router)
+    </div>
   );
 }

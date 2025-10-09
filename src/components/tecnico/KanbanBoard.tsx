@@ -4,10 +4,10 @@ import OrdenCard from "@/components/tecnico/OrdenCard";
 import { EstadoOT, OrdenTrabajo } from "@/types/tecnico";
 
 interface KanbanBoardProps {
-  ordenes: OrdenTrabajo[];
-  onCambiarEstado: (ordenId: string, nuevoEstado: EstadoOT, motivo?: string) => void;
-  onSubirEvidencias: (ordenId: string, evidencias: File[]) => void;
-  onAgregarNota: (ordenId: string, nota: string) => void;
+  ordenes?: OrdenTrabajo[]; // ← ahora opcional
+  onCambiarEstado?: (ordenId: string, nuevoEstado: EstadoOT, motivo?: string) => void;
+  onSubirEvidencias?: (ordenId: string, evidencias: File[]) => void;
+  onAgregarNota?: (ordenId: string, nota: string) => void;
 }
 
 interface ColumnaKanban {
@@ -18,60 +18,15 @@ interface ColumnaKanban {
 }
 
 const columnas: ColumnaKanban[] = [
-  {
-    estado: "INGRESO",
-    titulo: "Ingreso",
-    color: "text-blue-400",
-    bgColor: "bg-blue-600/10 border-blue-600/30",
-  },
-  {
-    estado: "DIAGNOSTICO",
-    titulo: "Diagnóstico",
-    color: "text-yellow-400",
-    bgColor: "bg-yellow-600/10 border-yellow-600/30",
-  },
-  {
-    estado: "COTIZACION_ENVIADA",
-    titulo: "Cotización Enviada",
-    color: "text-purple-400",
-    bgColor: "bg-purple-600/10 border-purple-600/30",
-  },
-  {
-    estado: "DESARME",
-    titulo: "Desarme",
-    color: "text-orange-400",
-    bgColor: "bg-orange-600/10 border-orange-600/30",
-  },
-  {
-    estado: "ARMADO",
-    titulo: "Armado",
-    color: "text-indigo-400",
-    bgColor: "bg-indigo-600/10 border-indigo-600/30",
-  },
-  {
-    estado: "PRUEBA_CALIDAD",
-    titulo: "Prueba de Calidad",
-    color: "text-cyan-400",
-    bgColor: "bg-cyan-600/10 border-cyan-600/30",
-  },
-  {
-    estado: "LISTO_ENTREGA",
-    titulo: "Listo para Entrega",
-    color: "text-green-400",
-    bgColor: "bg-green-600/10 border-green-600/30",
-  },
-  {
-    estado: "ENTREGADO",
-    titulo: "Entregado",
-    color: "text-gray-400",
-    bgColor: "bg-gray-600/10 border-gray-600/30",
-  },
-  {
-    estado: "EN_ESPERA",
-    titulo: "En Espera",
-    color: "text-red-400",
-    bgColor: "bg-red-600/10 border-red-600/30",
-  },
+  { estado: "INGRESO",           titulo: "Ingreso",             color: "text-blue-400",   bgColor: "bg-blue-600/10 border-blue-600/30" },
+  { estado: "DIAGNOSTICO",       titulo: "Diagnóstico",         color: "text-yellow-400", bgColor: "bg-yellow-600/10 border-yellow-600/30" },
+  { estado: "COTIZACION_ENVIADA",titulo: "Cotización Enviada",  color: "text-purple-400", bgColor: "bg-purple-600/10 border-purple-600/30" },
+  { estado: "DESARME",           titulo: "Desarme",             color: "text-orange-400", bgColor: "bg-orange-600/10 border-orange-600/30" },
+  { estado: "ARMADO",            titulo: "Armado",              color: "text-indigo-400", bgColor: "bg-indigo-600/10 border-indigo-600/30" },
+  { estado: "PRUEBA_CALIDAD",    titulo: "Prueba de Calidad",   color: "text-cyan-400",   bgColor: "bg-cyan-600/10 border-cyan-600/30" },
+  { estado: "LISTO_ENTREGA",     titulo: "Listo para Entrega",  color: "text-green-400",  bgColor: "bg-green-600/10 border-green-600/30" },
+  { estado: "ENTREGADO",         titulo: "Entregado",           color: "text-gray-400",   bgColor: "bg-gray-600/10 border-gray-600/30" },
+  { estado: "EN_ESPERA",         titulo: "En Espera",           color: "text-red-400",    bgColor: "bg-red-600/10 border-red-600/30" },
 ];
 
 export default function KanbanBoard({
@@ -80,9 +35,16 @@ export default function KanbanBoard({
   onSubirEvidencias,
   onAgregarNota,
 }: KanbanBoardProps) {
-  const getOrdenesPorEstado = (estado: EstadoOT) => {
-    return ordenes.filter((orden) => orden.estado === estado);
-  };
+  // Normaliza entradas
+  const items: OrdenTrabajo[] = Array.isArray(ordenes) ? ordenes : [];
+
+  // No-ops por si no pasan handlers aún
+  const _cambiar = onCambiarEstado ?? (() => {});
+  const _evid = onSubirEvidencias ?? (() => {});
+  const _nota = onAgregarNota ?? (() => {});
+
+  const getOrdenesPorEstado = (estado: EstadoOT) =>
+    items.filter((orden) => orden?.estado === estado);
 
   return (
     <div className="overflow-x-auto">
@@ -96,9 +58,7 @@ export default function KanbanBoard({
               <div className={`rounded-lg border p-4 mb-4 ${columna.bgColor}`}>
                 <div className="flex items-center justify-between">
                   <h3 className={`font-semibold ${columna.color}`}>{columna.titulo}</h3>
-                  <span
-                    className={`text-sm px-2 py-1 rounded-full bg-secondary-700 ${columna.color}`}
-                  >
+                  <span className={`text-sm px-2 py-1 rounded-full bg-secondary-700 ${columna.color}`}>
                     {ordenesColumna.length}
                   </span>
                 </div>
@@ -115,9 +75,9 @@ export default function KanbanBoard({
                     <OrdenCard
                       key={orden.id}
                       orden={orden}
-                      onCambiarEstado={onCambiarEstado}
-                      onSubirEvidencias={onSubirEvidencias}
-                      onAgregarNota={onAgregarNota}
+                      onCambiarEstado={_cambiar}
+                      onSubirEvidencias={_evid}
+                      onAgregarNota={_nota}
                       onAbrirChecklist={(ordenId) => {
                         console.log("Abrir checklist para orden:", ordenId);
                       }}
