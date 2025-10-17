@@ -1,0 +1,172 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Importar estilos específicos del dashboard del técnico */
+@import "../styles/tecnico-dashboard.css";
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(to bottom, transparent, rgb(var(--background-end-rgb)))
+    rgb(var(--background-start-rgb));
+}
+
+/* Animaciones personalizadas para Toast Notifications */
+@keyframes toast-slide-in {
+  0% {
+    transform: translateX(100%) translateY(8px) scale(0.95) rotate(2deg);
+    opacity: 0;
+  }
+  50% {
+    transform: translateX(-8px) translateY(0) scale(1.02) rotate(-0.5deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateX(0) translateY(0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes toast-slide-out {
+  0% {
+    transform: translateX(0) translateY(0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: translateX(8px) translateY(-4px) scale(0.98) rotate(1deg);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateX(120%) translateY(-8px) scale(0.9) rotate(3deg);
+    opacity: 0;
+  }
+}
+
+@keyframes toast-progress {
+  0% {
+    width: 100%;
+    opacity: 1;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.4) 100%);
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    width: 0%;
+    opacity: 0.3;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.1) 100%);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%) skewX(-12deg);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(200%) skewX(-12deg);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes bounce-gentle {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.6), 0 0 30px rgba(255, 255, 255, 0.4);
+  }
+}
+
+/* Clases de utilidad para las animaciones */
+.animate-toast-in {
+  animation: toast-slide-in 0.5s ease-out forwards;
+}
+
+.animate-toast-out {
+  animation: toast-slide-out 0.3s ease-in forwards;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite ease-in-out;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s infinite ease-in-out;
+}
+
+.animate-bounce-gentle {
+  animation: bounce-gentle 1s infinite ease-in-out;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2s infinite ease-in-out;
+}
+
+/* Efectos hover para botones */
+.btn-toast-action {
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-toast-action:hover {
+  transform: translateY(-1px) scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn-toast-action:active {
+  transform: translateY(0) scale(0.98);
+}

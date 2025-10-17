@@ -1,0 +1,797 @@
+/* ==========================================================================
+   DASHBOARD DEL TÉCNICO - ESTILOS MODERNIZADOS
+   Tema profesional con accesibilidad, consistencia y rendimiento optimizado
+   ========================================================================== */
+
+/* =========================
+   DESIGN TOKENS
+   ========================= */
+:root {
+  /* Colores principales - Contrastes AA/AAA verificados */
+  --tecnico-primary: #3b82f6;
+  --tecnico-primary-hover: #2563eb;
+  --tecnico-primary-active: #1d4ed8;
+  --tecnico-primary-light: rgba(59, 130, 246, 0.1);
+
+  /* Grises del tema oscuro */
+  --tecnico-gray-50: #f9fafb;
+  --tecnico-gray-100: #f3f4f6;
+  --tecnico-gray-400: #9ca3af;
+  --tecnico-gray-500: #6b7280;
+  --tecnico-gray-600: #4b5563;
+  --tecnico-gray-700: #374151;
+  --tecnico-gray-800: #1f2937;
+  --tecnico-gray-900: #111827;
+  --tecnico-gray-950: #030712;
+
+  /* Semánticos */
+  --tecnico-success: #10b981;
+  --tecnico-success-light: rgba(16, 185, 129, 0.15);
+  --tecnico-warning: #f59e0b;
+  --tecnico-warning-light: rgba(245, 158, 11, 0.15);
+  --tecnico-error: #ef4444;
+  --tecnico-error-light: rgba(239, 68, 68, 0.15);
+  --tecnico-info: var(--tecnico-primary);
+
+  /* Layout tokens */
+  --tecnico-sidebar-width: 20rem;
+  --tecnico-sidebar-width-mobile: 17.5rem;
+  --tecnico-border-radius: 0.5rem;
+  --tecnico-border-radius-lg: 0.75rem;
+  --tecnico-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --tecnico-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --tecnico-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --tecnico-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+
+  /* Espaciado sistemático */
+  --tecnico-space-xs: 0.25rem;
+  --tecnico-space-sm: 0.5rem;
+  --tecnico-space-md: 0.75rem;
+  --tecnico-space-lg: 1rem;
+  --tecnico-space-xl: 1.5rem;
+  --tecnico-space-2xl: 2rem;
+
+  /* Tipografía */
+  --tecnico-text-xs: 0.75rem;
+  --tecnico-text-sm: 0.875rem;
+  --tecnico-text-base: 1rem;
+  --tecnico-text-lg: 1.125rem;
+  --tecnico-text-xl: 1.25rem;
+  --tecnico-text-2xl: 1.875rem;
+  --tecnico-line-height-tight: 1.25;
+  --tecnico-line-height-normal: 1.5;
+
+  /* Transiciones */
+  --tecnico-transition-fast: 150ms ease-out;
+  --tecnico-transition-base: 200ms ease-out;
+  --tecnico-transition-slow: 300ms ease-out;
+
+  /* Focus ring accesible */
+  --tecnico-focus-ring: 0 0 0 2px var(--tecnico-primary-light), 0 0 0 4px var(--tecnico-primary);
+}
+
+/* =========================
+   LAYOUT BASE
+   ========================= */
+.tecnico-dashboard {
+  min-height: 100vh;
+  background: var(--tecnico-gray-900);
+  color: var(--tecnico-gray-50);
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: var(--tecnico-line-height-normal);
+}
+
+/* =========================
+   SIDEBAR
+   ========================= */
+.tecnico-sidebar {
+  width: var(--tecnico-sidebar-width);
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  background: var(--tecnico-gray-800);
+  border-right: 1px solid var(--tecnico-gray-700);
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  /* Optimización de rendimiento para animaciones */
+  will-change: transform;
+  transition: transform var(--tecnico-transition-slow);
+}
+
+.tecnico-sidebar-header {
+  padding: var(--tecnico-space-xl);
+  border-bottom: 1px solid var(--tecnico-gray-700);
+  flex-shrink: 0;
+}
+
+.tecnico-sidebar-title {
+  color: var(--tecnico-gray-50);
+  font-size: var(--tecnico-text-xl);
+  font-weight: 700;
+  line-height: var(--tecnico-line-height-tight);
+  margin-bottom: var(--tecnico-space-xs);
+}
+
+.tecnico-sidebar-subtitle {
+  color: var(--tecnico-gray-400);
+  font-size: var(--tecnico-text-sm);
+  font-weight: 500;
+}
+
+/* =========================
+   NAVEGACIÓN
+   ========================= */
+.tecnico-nav {
+  flex: 1;
+  padding: var(--tecnico-space-lg);
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+/* TODO: Migrar a Tailwind: space-y-1 */
+.tecnico-nav-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: var(--tecnico-space-md) var(--tecnico-space-lg);
+  margin-bottom: var(--tecnico-space-xs);
+  border-radius: var(--tecnico-border-radius);
+  border: none;
+  background: transparent;
+  color: var(--tecnico-gray-400);
+  font-size: var(--tecnico-text-sm);
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+
+  /* Transiciones optimizadas para rendimiento */
+  transition: background-color var(--tecnico-transition-fast), color var(--tecnico-transition-fast),
+    transform var(--tecnico-transition-fast);
+}
+
+/* Estados interactivos accesibles */
+.tecnico-nav-button:hover {
+  background: var(--tecnico-gray-700);
+  color: var(--tecnico-gray-50);
+  /* Efecto más sutil que no interfiere con el texto */
+  border-left: 2px solid var(--tecnico-primary);
+  padding-left: calc(var(--tecnico-space-lg) - 2px);
+}
+
+.tecnico-nav-button:focus-visible {
+  outline: none;
+  box-shadow: var(--tecnico-focus-ring);
+}
+
+.tecnico-nav-button:active {
+  transform: translateX(1px);
+}
+
+.tecnico-nav-button.active {
+  background: var(--tecnico-primary);
+  color: white;
+  box-shadow: var(--tecnico-shadow-lg);
+  font-weight: 600;
+}
+
+/* Indicador más sutil en lugar del triángulo que tapa texto */
+.tecnico-nav-button.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--tecnico-primary);
+  border-radius: 0 2px 2px 0;
+}
+
+.tecnico-nav-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-right: var(--tecnico-space-md);
+  flex-shrink: 0;
+  transition: transform var(--tecnico-transition-fast);
+}
+
+.tecnico-nav-button:hover .tecnico-nav-icon {
+  transform: scale(1.05);
+}
+
+.tecnico-nav-content {
+  flex: 1;
+  min-width: 0; /* Previene overflow en textos largos */
+}
+
+.tecnico-nav-name {
+  font-size: var(--tecnico-text-sm);
+  font-weight: 500;
+  line-height: var(--tecnico-line-height-tight);
+  margin-bottom: 2px;
+}
+
+.tecnico-nav-description {
+  font-size: var(--tecnico-text-xs);
+  opacity: 0.8;
+  line-height: var(--tecnico-line-height-tight);
+  /* TODO: Migrar a Tailwind: text-xs opacity-80 truncate */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================
+   SIDEBAR FOOTER
+   ========================= */
+.tecnico-sidebar-footer {
+  padding: var(--tecnico-space-lg);
+  border-top: 1px solid var(--tecnico-gray-700);
+  flex-shrink: 0;
+  gap: var(--tecnico-space-md);
+}
+
+.tecnico-status-card {
+  background: var(--tecnico-gray-700);
+  border-radius: var(--tecnico-border-radius);
+  padding: var(--tecnico-space-md);
+  margin-bottom: var(--tecnico-space-md);
+  border: 1px solid var(--tecnico-gray-600);
+}
+
+.tecnico-status-online {
+  display: flex;
+  align-items: center;
+  gap: var(--tecnico-space-sm);
+  margin-bottom: var(--tecnico-space-sm);
+}
+
+.tecnico-status-dot {
+  width: var(--tecnico-space-sm);
+  height: var(--tecnico-space-sm);
+  background: var(--tecnico-success);
+  border-radius: 50%;
+  animation: pulse-smooth 2s ease-in-out infinite;
+}
+
+.tecnico-logout-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: var(--tecnico-space-sm) var(--tecnico-space-lg);
+  border-radius: var(--tecnico-border-radius);
+  background: var(--tecnico-error-light);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  font-size: var(--tecnico-text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--tecnico-transition-fast), color var(--tecnico-transition-fast),
+    transform var(--tecnico-transition-fast);
+}
+
+.tecnico-logout-button:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fecaca;
+  transform: translateY(-1px);
+}
+
+.tecnico-logout-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3), 0 0 0 4px rgba(239, 68, 68, 0.1);
+}
+
+.tecnico-logout-button:active {
+  transform: translateY(0);
+}
+
+/* =========================
+   ÁREA PRINCIPAL
+   ========================= */
+.tecnico-main {
+  margin-left: var(--tecnico-sidebar-width);
+  min-height: 100vh;
+  background: var(--tecnico-gray-900);
+  transition: margin-left var(--tecnico-transition-slow);
+}
+
+.tecnico-content {
+  padding: var(--tecnico-space-xl);
+  max-width: 1400px; /* Limita ancho en pantallas muy grandes */
+  /* TODO: Migrar a Tailwind: p-6 max-w-7xl */
+}
+
+/* =========================
+   HEADER
+   ========================= */
+.tecnico-header {
+  margin-bottom: var(--tecnico-space-xl);
+}
+
+.tecnico-title {
+  font-size: var(--tecnico-text-2xl);
+  font-weight: 700;
+  color: var(--tecnico-gray-50);
+  line-height: var(--tecnico-line-height-tight);
+  margin-bottom: var(--tecnico-space-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--tecnico-space-sm);
+}
+
+.tecnico-subtitle {
+  color: var(--tecnico-gray-400);
+  font-size: var(--tecnico-text-base);
+  font-weight: 400;
+}
+
+/* =========================
+   TARJETAS DE ACCIÓN RÁPIDA
+   ========================= */
+.tecnico-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--tecnico-space-lg);
+  margin-bottom: var(--tecnico-space-xl);
+  /* TODO: Migrar a Tailwind: grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 */
+}
+
+.tecnico-action-card {
+  background: linear-gradient(135deg, var(--tecnico-primary), var(--tecnico-primary-hover));
+  color: white;
+  padding: var(--tecnico-space-xl);
+  border-radius: var(--tecnico-border-radius-lg);
+  text-align: center;
+  cursor: pointer;
+  border: none;
+  box-shadow: var(--tecnico-shadow);
+  position: relative;
+  overflow: hidden;
+
+  /* Optimización de rendimiento */
+  will-change: transform, box-shadow;
+  transition: transform var(--tecnico-transition-base), box-shadow var(--tecnico-transition-base);
+}
+
+.tecnico-action-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  transition: left var(--tecnico-transition-slow);
+}
+
+.tecnico-action-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--tecnico-shadow-xl);
+}
+
+.tecnico-action-card:hover::before {
+  left: 100%;
+}
+
+.tecnico-action-card:focus-visible {
+  outline: none;
+  box-shadow: var(--tecnico-shadow-xl), var(--tecnico-focus-ring);
+}
+
+.tecnico-action-card:active {
+  transform: translateY(-2px);
+}
+
+/* Variantes de color semánticas */
+.tecnico-action-card.green {
+  background: linear-gradient(135deg, var(--tecnico-success), #059669);
+}
+
+.tecnico-action-card.yellow {
+  background: linear-gradient(135deg, var(--tecnico-warning), #d97706);
+}
+
+.tecnico-action-card.purple {
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+}
+
+.tecnico-action-icon {
+  font-size: 2rem;
+  margin-bottom: var(--tecnico-space-sm);
+  display: block;
+  transition: transform var(--tecnico-transition-fast);
+}
+
+.tecnico-action-card:hover .tecnico-action-icon {
+  transform: scale(1.1);
+}
+
+.tecnico-action-text {
+  font-weight: 600;
+  font-size: var(--tecnico-text-sm);
+  /* TODO: Migrar a Tailwind: text-sm font-semibold */
+}
+
+/* =========================
+   TARJETAS KPI
+   ========================= */
+.tecnico-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--tecnico-space-lg);
+  margin-bottom: var(--tecnico-space-xl);
+}
+
+.tecnico-kpi-card {
+  background: var(--tecnico-gray-800);
+  border: 1px solid var(--tecnico-gray-700);
+  border-radius: var(--tecnico-border-radius-lg);
+  padding: var(--tecnico-space-xl);
+  text-align: center;
+  box-shadow: var(--tecnico-shadow-sm);
+  position: relative;
+
+  /* Optimización para hover */
+  will-change: transform, box-shadow;
+  transition: transform var(--tecnico-transition-fast), box-shadow var(--tecnico-transition-fast),
+    border-color var(--tecnico-transition-fast);
+}
+
+.tecnico-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--tecnico-shadow-lg);
+  border-color: var(--tecnico-gray-600);
+}
+
+.tecnico-kpi-value {
+  font-size: 1.875rem; /* 30px */
+  font-weight: 800;
+  line-height: var(--tecnico-line-height-tight);
+  margin-bottom: var(--tecnico-space-xs);
+  font-variant-numeric: tabular-nums; /* Números alineados */
+}
+
+/* Colores semánticos con mejor contraste */
+.tecnico-kpi-value.blue {
+  color: #60a5fa;
+} /* Mejor contraste que el azul base */
+.tecnico-kpi-value.green {
+  color: #34d399;
+}
+.tecnico-kpi-value.yellow {
+  color: #fbbf24;
+}
+.tecnico-kpi-value.red {
+  color: #f87171;
+}
+
+.tecnico-kpi-label {
+  color: var(--tecnico-gray-400);
+  font-size: var(--tecnico-text-sm);
+  font-weight: 500;
+  /* TODO: Migrar a Tailwind: text-sm font-medium text-gray-400 */
+}
+
+/* =========================
+   LAYOUT DE CONTENIDO
+   ========================= */
+.tecnico-main-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--tecnico-space-xl);
+  /* TODO: Migrar a Tailwind: grid grid-cols-1 lg:grid-cols-3 gap-6 */
+}
+
+/* =========================
+   TARJETAS DE CONTENIDO
+   ========================= */
+.tecnico-card {
+  background: var(--tecnico-gray-800);
+  border: 1px solid var(--tecnico-gray-700);
+  border-radius: var(--tecnico-border-radius-lg);
+  padding: var(--tecnico-space-xl);
+  box-shadow: var(--tecnico-shadow-sm);
+  transition: border-color var(--tecnico-transition-fast), box-shadow var(--tecnico-transition-fast);
+}
+
+.tecnico-card:hover {
+  border-color: var(--tecnico-gray-600);
+  box-shadow: var(--tecnico-shadow);
+}
+
+.tecnico-card-title {
+  font-size: var(--tecnico-text-lg);
+  font-weight: 600;
+  color: var(--tecnico-gray-50);
+  line-height: var(--tecnico-line-height-tight);
+  margin-bottom: var(--tecnico-space-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--tecnico-space-sm);
+}
+
+/* =========================
+   ITEMS DE LISTA
+   ========================= */
+.tecnico-list-item {
+  background: var(--tecnico-gray-700);
+  border: 1px solid var(--tecnico-gray-600);
+  padding: var(--tecnico-space-lg);
+  border-radius: var(--tecnico-border-radius);
+  margin-bottom: var(--tecnico-space-md);
+
+  transition: background-color var(--tecnico-transition-fast),
+    border-color var(--tecnico-transition-fast), transform var(--tecnico-transition-fast);
+}
+
+.tecnico-list-item:hover {
+  background: var(--tecnico-gray-600);
+  border-color: var(--tecnico-gray-500);
+  transform: translateX(2px);
+}
+
+.tecnico-list-item:last-child {
+  margin-bottom: 0;
+}
+
+/* =========================
+   BADGES Y MENSAJES
+   ========================= */
+.tecnico-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--tecnico-space-xs) var(--tecnico-space-sm);
+  border-radius: calc(var(--tecnico-border-radius) * 0.75);
+  font-size: var(--tecnico-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  /* TODO: Migrar a Tailwind: inline-flex items-center px-2 py-1 text-xs font-semibold uppercase tracking-wide */
+}
+
+/* Colores semánticos mejorados para mejor contraste */
+.tecnico-badge.blue {
+  background: rgba(96, 165, 250, 0.15);
+  color: #93c5fd;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+}
+
+.tecnico-badge.green {
+  background: var(--tecnico-success-light);
+  color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.tecnico-badge.yellow {
+  background: var(--tecnico-warning-light);
+  color: #fcd34d;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.tecnico-badge.red {
+  background: var(--tecnico-error-light);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+/* =========================
+   MENSAJES DE ESTADO
+   ========================= */
+.tecnico-success-message {
+  background: var(--tecnico-success-light);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+  padding: var(--tecnico-space-lg) var(--tecnico-space-xl);
+  border-radius: var(--tecnico-border-radius);
+  text-align: center;
+  margin-top: var(--tecnico-space-2xl);
+  display: inline-block;
+  font-weight: 500;
+  box-shadow: var(--tecnico-shadow-sm);
+}
+
+/* =========================
+   RESPONSIVE DESIGN
+   ========================= */
+@media (max-width: 1024px) {
+  .tecnico-sidebar {
+    transform: translateX(-100%);
+  }
+
+  .tecnico-sidebar.mobile-open {
+    transform: translateX(0);
+    box-shadow: var(--tecnico-shadow-xl);
+  }
+
+  .tecnico-main {
+    margin-left: 0;
+  }
+
+  .tecnico-main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .tecnico-quick-actions,
+  .tecnico-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--tecnico-space-md);
+  }
+
+  .tecnico-content {
+    padding: var(--tecnico-space-lg);
+  }
+
+  .tecnico-title {
+    font-size: var(--tecnico-text-xl);
+  }
+
+  .tecnico-action-card,
+  .tecnico-kpi-card {
+    padding: var(--tecnico-space-lg);
+  }
+}
+
+@media (max-width: 480px) {
+  .tecnico-quick-actions,
+  .tecnico-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tecnico-sidebar {
+    width: var(--tecnico-sidebar-width-mobile);
+  }
+
+  .tecnico-content {
+    padding: var(--tecnico-space-md);
+  }
+
+  .tecnico-title {
+    font-size: var(--tecnico-text-lg);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--tecnico-space-xs);
+  }
+}
+
+/* =========================
+   ANIMACIONES ACCESIBLES
+   ========================= */
+
+/* Respeta las preferencias de movimiento reducido */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes pulse-smooth {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.8;
+      transform: scale(1.05);
+    }
+  }
+
+  @keyframes slideInLeft {
+    from {
+      transform: translateX(-2rem);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeInUp {
+    from {
+      transform: translateY(1rem);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .animate-slide-in {
+    animation: slideInLeft var(--tecnico-transition-slow) ease-out;
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 600ms ease-out;
+  }
+}
+
+/* Para usuarios que prefieren movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .tecnico-status-dot {
+    animation: none;
+  }
+}
+
+/* =========================
+   SCROLLBAR PERSONALIZADO
+   ========================= */
+.tecnico-nav,
+.tecnico-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--tecnico-gray-600) var(--tecnico-gray-800);
+}
+
+.tecnico-nav::-webkit-scrollbar,
+.tecnico-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tecnico-nav::-webkit-scrollbar-track,
+.tecnico-scrollbar::-webkit-scrollbar-track {
+  background: var(--tecnico-gray-800);
+  border-radius: 3px;
+}
+
+.tecnico-nav::-webkit-scrollbar-thumb,
+.tecnico-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--tecnico-gray-600);
+  border-radius: 3px;
+  transition: background-color var(--tecnico-transition-fast);
+}
+
+.tecnico-nav::-webkit-scrollbar-thumb:hover,
+.tecnico-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--tecnico-gray-500);
+}
+
+/* =========================
+   UTILIDADES FINALES
+   ========================= */
+
+/* Mejora el rendimiento en elementos que se animan frecuentemente */
+.tecnico-action-card,
+.tecnico-nav-button,
+.tecnico-kpi-card {
+  contain: layout style paint;
+}
+
+/* Asegura que el focus sea visible en modo alto contraste */
+@media (prefers-contrast: high) {
+  .tecnico-nav-button:focus-visible,
+  .tecnico-action-card:focus-visible,
+  .tecnico-logout-button:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+}
+
+/*
+TODO: Checklist de migración a Tailwind
+- Espaciados: Migrar todos los padding/margin a scale de Tailwind (p-4, m-6, etc.)
+- Colores: Usar palette de grays y colores semánticos de Tailwind
+- Tipografía: text-sm, text-lg, font-semibold, etc.
+- Sombras: shadow-sm, shadow-lg en lugar de box-shadow custom
+- Bordes: rounded-lg, border-gray-700, etc.
+- Grid/Flex: grid-cols-4, flex, items-center, gap-4
+- Estados: hover:, focus:, active: prefixes
+- Responsive: sm:, md:, lg: prefixes
+- Animaciones: animate-pulse, transition-all, duration-200
+*/
