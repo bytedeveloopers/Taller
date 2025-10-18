@@ -7,212 +7,228 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ===================== ENUMS =====================
-enum UserRole {
+model client {
+  id                String      @id
+  name              String
+  phone             String      @unique(map: "Client_phone_key")
+  email             String?     @unique(map: "Client_email_key")
+  altPhone          String?
+  address           String?
+  contactPreference String
+  labels            String?
+  notes             String?
+  pickupPoints      String?
+  consents          String?
+  isActive          Boolean     @default(true)
+  created_at        DateTime    @default(now())
+  updated_at        DateTime
+  joborder          joborder[]
+  recepcion         recepcion[]
+  vehicle           vehicle[]
+}
+
+model evidencia {
+  id        String   @id
+  vehicleId String
+  titulo    String?
+  url       String
+  tipo      String?
+  nota      String?
+  createdAt DateTime @default(now())
+  vehicle   vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade, map: "Evidencia_vehicleId_fkey")
+
+  @@index([vehicleId], map: "Evidencia_vehicleId_idx")
+}
+
+model joborder {
+  id           String          @id
+  vehicleId    String
+  tecnicoId    Int?
+  estado       joborder_estado @default(INGRESO)
+  prioridad    Int             @default(3)
+  descripcion  String?
+  fechaIngreso DateTime        @default(now())
+  fechaSalida  DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime
+  clientId     String?
+  client       client?         @relation(fields: [clientId], references: [id], map: "JobOrder_clientId_fkey")
+  tecnico      tecnico?        @relation(fields: [tecnicoId], references: [id], map: "JobOrder_tecnicoId_fkey")
+  vehicle      vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade, map: "JobOrder_vehicleId_fkey")
+  recepcion    recepcion?
+
+  @@index([clientId], map: "JobOrder_clientId_fkey")
+  @@index([estado], map: "JobOrder_estado_idx")
+  @@index([tecnicoId], map: "JobOrder_tecnicoId_idx")
+  @@index([vehicleId], map: "JobOrder_vehicleId_fkey")
+}
+
+model recepcion {
+  id                String          @id
+  clientId          String
+  vehicleId         String
+  jobOrderId        String          @unique
+  recibidoPorUserId Int?
+  kmEntrada         Int
+  placaEntrada      String?
+  observaciones     String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime
+  client            client          @relation(fields: [clientId], references: [id], onDelete: Cascade, map: "Recepcion_clientId_fkey")
+  joborder          joborder        @relation(fields: [jobOrderId], references: [id], onDelete: Cascade, map: "Recepcion_jobOrderId_fkey")
+  user              user?           @relation(fields: [recibidoPorUserId], references: [id], map: "Recepcion_recibidoPorUserId_fkey")
+  vehicle           vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade, map: "Recepcion_vehicleId_fkey")
+  recepcionfoto     recepcionfoto[]
+
+  @@index([clientId])
+  @@index([jobOrderId])
+  @@index([recibidoPorUserId])
+  @@index([vehicleId])
+}
+
+model recepcionfoto {
+  id          String             @id
+  recepcionId String
+  tipo        recepcionfoto_tipo
+  url         String
+  nota        String?
+  createdAt   DateTime           @default(now())
+  recepcion   recepcion          @relation(fields: [recepcionId], references: [id], onDelete: Cascade, map: "RecepcionFoto_recepcionId_fkey")
+
+  @@index([recepcionId])
+}
+
+model tecnico {
+  id             Int              @id @default(autoincrement())
+  nombre         String
+  telefono       String?
+  especialidad   String?
+  habilidades    String?
+  skills         String?          @db.LongText
+  capacidad      Int              @default(8)
+  carga          Int              @default(0)
+  horario_inicio String?
+  horario_fin    String?
+  notas          String?
+  userId         Int              @unique(map: "Tecnico_userId_key")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime
+  joborder       joborder[]
+  user           user             @relation(fields: [userId], references: [id], onDelete: Cascade, map: "Tecnico_userId_fkey")
+  tecnicobloqueo tecnicobloqueo[]
+  tecniconota    tecniconota[]
+}
+
+model tecnicobloqueo {
+  id        Int                 @id @default(autoincrement())
+  tecnicoId Int
+  startDate DateTime
+  endDate   DateTime
+  reason    String?
+  type      tecnicobloqueo_type
+  createdAt DateTime            @default(now())
+  updatedAt DateTime
+  tecnico   tecnico             @relation(fields: [tecnicoId], references: [id], onDelete: Cascade, map: "TecnicoBloqueo_tecnicoId_fkey")
+
+  @@index([tecnicoId], map: "TecnicoBloqueo_tecnicoId_idx")
+}
+
+model tecniconota {
+  id        Int      @id @default(autoincrement())
+  tecnicoId Int
+  authorId  Int?
+  titulo    String?
+  body      String
+  pinned    Boolean  @default(false)
+  isPrivate Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  user      user?    @relation(fields: [authorId], references: [id], map: "TecnicoNota_authorId_fkey")
+  tecnico   tecnico  @relation(fields: [tecnicoId], references: [id], onDelete: Cascade, map: "TecnicoNota_tecnicoId_fkey")
+
+  @@index([authorId], map: "TecnicoNota_authorId_idx")
+  @@index([tecnicoId], map: "TecnicoNota_tecnicoId_idx")
+}
+
+model user {
+  id                   Int           @id @default(autoincrement())
+  email                String        @unique(map: "User_email_key")
+  password             String?
+  nombre               String?
+  role                 user_role     @default(CLIENTE)
+  is_active            Boolean       @default(true)
+  must_change_password Boolean       @default(true)
+  phone                String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime
+  recepcion            recepcion[]
+  tecnico              tecnico?
+  tecniconota          tecniconota[]
+}
+
+model vehicle {
+  id                   String               @id
+  brand                String
+  model                String
+  year                 Int
+  vin                  String?
+  licensePlate         String?
+  activo               Boolean              @default(true)
+  estadoActual         vehicle_estadoActual @default(INGRESO)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime
+  clienteId            String
+  color                String?
+  kmActual             Int                  @default(0)
+  proximoMantenimiento DateTime?
+  evidencia            evidencia[]
+  joborder             joborder[]
+  recepcion            recepcion[]
+  client               client               @relation(fields: [clienteId], references: [id], onDelete: Cascade, map: "Vehicle_clienteId_fkey")
+
+  @@index([clienteId], map: "Vehicle_clienteId_fkey")
+}
+
+enum recepcionfoto_tipo {
+  FRONTAL
+  TRASERO
+  LATERAL_IZQ
+  LATERAL_DER
+  DANIO
+}
+
+enum joborder_estado {
+  INGRESO
+  DIAGNOSTICO
+  DESARME
+  ESPERA
+  ARMADO
+  PRUEBA
+  FINALIZADO
+  RECEPCION
+}
+
+enum user_role {
   ADMIN
   TECNICO
   RECEPCIONISTA
   CLIENTE
 }
 
-enum BlockType {
+enum tecnicobloqueo_type {
   VACATION
   SICK_LEAVE
   TRAINING
   OTHER
 }
 
-enum VehicleEstado {
+enum vehicle_estadoActual {
   INGRESO
   DIAGNOSTICO
-  DESARME // Proceso desarme
+  DESARME
   ESPERA
-  ARMADO // Proceso armado
-  PRUEBA // En prueba
+  ARMADO
+  PRUEBA
   FINALIZADO
   RECEPCION
-}
-
-// ===================== MODELOS =====================
-model User {
-  id                   Int      @id @default(autoincrement())
-  email                String   @unique
-  password             String?
-  nombre               String?
-  role                 UserRole @default(CLIENTE)
-  is_active            Boolean  @default(true)
-  must_change_password Boolean  @default(true)
-  phone                String?
-
-  // 1–1 con Tecnico (ya lo tenías)
-  tecnico Tecnico?
-
-  // back-relation como autor de notas internas
-  notasCreadas TecnicoNota[] @relation("UserNotas")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Tecnico {
-  id             Int     @id @default(autoincrement())
-  nombre         String
-  telefono       String?
-  especialidad   String?
-  habilidades    String? // legacy CSV
-  skills         Json? // JSON array ["Motor","Frenos"]
-  capacidad      Int     @default(8)
-  carga          Int     @default(0)
-  horario_inicio String?
-  horario_fin    String?
-  notas          String?
-
-  userId Int  @unique
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // ⬇⬇ ahora SÍ existe el modelo y el nombre de la relación
-  bloqueos TecnicoBloqueo[] @relation("TecnicoBloqueos")
-
-  // notas internas (histórico)
-  notasInternas TecnicoNota[] @relation("TecnicoNotas")
-
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  JobOrder  JobOrder[]
-}
-
-model TecnicoBloqueo {
-  id Int @id @default(autoincrement())
-
-  tecnicoId Int
-  // empareja con Tecnico.bloqueos
-  tecnico   Tecnico @relation("TecnicoBloqueos", fields: [tecnicoId], references: [id], onDelete: Cascade)
-
-  startDate DateTime
-  endDate   DateTime
-  reason    String?
-  type      BlockType // o String si prefieres libre
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([tecnicoId])
-}
-
-model TecnicoNota {
-  id Int @id @default(autoincrement())
-
-  tecnicoId Int
-  // empareja con Tecnico.notasInternas
-  tecnico   Tecnico @relation("TecnicoNotas", fields: [tecnicoId], references: [id], onDelete: Cascade)
-
-  authorId Int?
-  // empareja con User.notasCreadas
-  author   User? @relation("UserNotas", fields: [authorId], references: [id], onDelete: SetNull)
-
-  titulo    String?
-  body      String
-  pinned    Boolean @default(false)
-  isPrivate Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([tecnicoId])
-  @@index([authorId])
-}
-
-model Client {
-  id String @id @default(uuid())
-
-  // ================= Información Personal =================
-  name      String
-  phone     String  @unique // Asumimos que el teléfono es único
-  email     String? @unique // Asumimos que el email es único (opcional)
-  alt_phone String? @map("altPhone") // Alternativo: si usas camelCase en la DB, omite @map
-  address   String?
-
-  // ================= Preferencias y Configuración =================
-  contact_preference String  @map("contactPreference") // 'PHONE', 'WHATSAPP', 'EMAIL'
-  labels             String? // Etiquetas separadas por comas (ej: "VIP,FLOTA")
-  notes              String?
-  pickup_points      String? @map("pickupPoints") // Puntos de recogida
-
-  // ================= Consents y Estado =================
-  consents  String? // JSON de los consentimientos (ej: {"marketing": true, "sms": false})
-  is_active Boolean @default(true) @map("isActive") // Cliente activo
-
-  // ================= Tiempos =================
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  // ================= Relaciones (Opcional) =================
-  // job_orders       JobOrder[] // Relación con órdenes de trabajo
-  // vehicles         Vehicle[]  // Relación con vehículos
-  Vehicle Vehicle[]
-
-  // Puedes usar @@map para renombrar la tabla si es necesario
-  @@map("Client")
-}
-
-model Vehicle {
-  id                   String        @id @default(uuid())
-  brand                String
-  model                String
-  year                 Int
-  color                String? // 👈 NUEVO (o confírmalo si ya existe)
-  kmActual             Int           @default(0)
-  licensePlate         String? // opcional: puedes borrarlo si no lo usas
-  vin                  String? // opcional: puedes borrarlo si no lo usas
-  proximoMantenimiento DateTime?
-  clienteId            String
-  cliente              Client        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  activo               Boolean       @default(true)
-  estadoActual         VehicleEstado @default(INGRESO)
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
-  JobOrder             JobOrder[]
-  Evidencia            Evidencia[]
-}
-
-model JobOrder {
-  id        String  @id @default(uuid())
-  vehicleId String
-  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-
-  // Asignación
-  tecnicoId Int?
-  tecnico   Tecnico? @relation(fields: [tecnicoId], references: [id], onDelete: SetNull)
-
-  // Flujo
-  estado      VehicleEstado @default(INGRESO)
-  prioridad   Int           @default(3) // 1 alta, 5 baja
-  descripcion String?
-
-  // Fechas
-  fechaIngreso DateTime  @default(now())
-  fechaSalida  DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([estado])
-  @@index([tecnicoId])
-  @@map("JobOrder")
-}
-
-model Evidencia {
-  id        String  @id @default(uuid())
-  vehicleId String
-  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-
-  titulo String?
-  url    String // ruta/URL del archivo (foto/video/pdf)
-  tipo   String? // "image/jpeg", "video/mp4", etc.
-  nota   String?
-
-  createdAt DateTime @default(now())
-
-  @@index([vehicleId])
-  @@map("Evidencia")
 }

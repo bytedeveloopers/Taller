@@ -1,9 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { prisma } from "@/lib/prisma";
 
-// Ajusta esta lista si usas otros nombres en tu enum VehicleEstado.
-// Como lo calculamos en JS, NO hace falta que existan todos en el enum.
-const ESTADOS_EN_TALLER = new Set([
+// Estados considerados "en taller" (sin acoplarse estrictamente al enum de Prisma)
+const ESTADOS_EN_TALLER = new Set<string>([
   "DIAGNOSTICO",
   "DESARME",
   "REPARACION",
@@ -23,29 +22,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const now = new Date();
     const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    // 1) total y activos van directo por DB
-    const [totalVehiculos, vehiculosActivos] = await Promise.all([
-      prisma.vehicle.count(),
-      prisma.vehicle.count({ where: { activo: true } }),
-    ]);
+    const [totalVehiculos, vehiculosActivos, proximoMantenimiento, estadosActivos] =
+      await prisma.$transaction([
+        prisma.vehicle.count(),
+        prisma.vehicle.count({ where: { activo: true } }),
+        prisma.vehicle.count({
+          where: { proximoMantenimiento: { gte: now, lte: in30 } },
+        }),
+        prisma.vehicle.findMany({
+          where: { activo: true },
+          select: { estadoActual: true },
+        }),
+      ]);
 
-    // 2) proximo mantenimiento (entre hoy e +30 días)
-    const proximoMantenimiento = await prisma.vehicle.count({
-      where: { proximoMantenimiento: { gte: now, lte: in30 } },
-    });
-
-    // 3) enTaller: lo calculamos en JS para evitar acoplar al enum exacto
-    //    Tomamos solo activos para que no cuente archivados/inactivos
-    const estados = await prisma.vehicle.findMany({
-      where: { activo: true },
-      select: { estadoActual: true },
-      // si tienes muchísimos registros, puedes usar take/skip o un count especializado
-    });
-
-    const enTaller = estados.reduce((acc, v) => {
-      const estado = String(v.estadoActual || "").toUpperCase();
+    const enTaller = estadosActivos.reduce((acc, v) => {
+      const estado = String(v.estadoActual ?? "").toUpperCase();
       return acc + (ESTADOS_EN_TALLER.has(estado) ? 1 : 0);
     }, 0);
+
+    // Evita golpear DB en ráfagas, manteniendo datos frescos
+    res.setHeader("Cache-Control", "private, max-age=10, must-revalidate");
 
     return res.status(200).json({
       success: true,

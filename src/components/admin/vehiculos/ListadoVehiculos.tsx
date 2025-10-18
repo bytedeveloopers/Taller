@@ -18,9 +18,15 @@ type Vehiculo = {
   year: number;
   color?: string;
   mileage?: number;
-  customer?: { id: string; name: string; phone: string; email?: string };
-  status?: string;
+  licensePlate?: string;
+  vin?: string;
+  customer?: { id: string; name: string; phone: string; email?: string } | null;
+  /** workflow: INGRESO, DIAGNOSTICO, REPARACION, ... */
+  status?: string | null;
+  /** activo/inactivo */
+  isActive?: boolean;
   lastVisit?: string | null;
+  updatedAt?: string;
 };
 
 interface Props {
@@ -30,7 +36,38 @@ interface Props {
   onEliminarVehiculo: (id: string) => void;
   onVerFicha360: (v: Vehiculo) => void;
   onRecargar: () => void;
-  onCrearVehiculo?: () => void; // 👈 nuevo
+  onCrearVehiculo?: () => void;
+}
+
+function Badge({
+  children,
+  tone = "slate",
+}: {
+  children: React.ReactNode;
+  tone?: "green" | "red" | "amber" | "slate" | "blue";
+}) {
+  const map: Record<string, string> = {
+    green: "bg-emerald-600/15 text-emerald-300 border-emerald-500/30",
+    red: "bg-rose-600/15 text-rose-300 border-rose-500/30",
+    amber: "bg-amber-600/15 text-amber-300 border-amber-500/30",
+    blue: "bg-sky-600/15 text-sky-300 border-sky-500/30",
+    slate: "bg-slate-600/15 text-slate-300 border-slate-500/30",
+  };
+  return (
+    <span className={`px-2 py-0.5 rounded-md text-xs border ${map[tone]} whitespace-nowrap`}>
+      {children}
+    </span>
+  );
+}
+
+function toneForStatus(st: string): "green" | "red" | "amber" | "slate" | "blue" {
+  const s = st.toUpperCase();
+  if (["INGRESO", "DIAGNOSTICO", "DESARME", "REPARACION", "ARMADO", "PRUEBA", "ESPERA", "EN_TALLER", "MANTENIMIENTO"].includes(s)) {
+    return "amber";
+  }
+  if (["ENTREGADO", "COMPLETADO", "CERRADO"].includes(s)) return "green";
+  if (["CANCELADO", "RECHAZADO"].includes(s)) return "red";
+  return "slate";
 }
 
 export default function ListadoVehiculos({
@@ -105,66 +142,79 @@ export default function ListadoVehiculos({
           </div>
         ) : (
           <ul className="divide-y divide-secondary-700">
-            {items.map((v) => (
-              <li key={v.id} className="grid grid-cols-12 px-4 py-3 items-center">
-                <div className="col-span-4 text-white">
-                  <div className="font-medium">
-                    {v.brand} {v.model} {v.year}
+            {items.map((v) => {
+              const status = (v.status ?? "").toString();
+              return (
+                <li key={v.id} className="grid grid-cols-12 px-4 py-3 items-center">
+                  {/* Vehículo */}
+                  <div className="col-span-4 text-white">
+                    <div className="font-medium">
+                      {v.brand} {v.model} {v.year}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {v.color ? `Color: ${v.color}` : ""}
+                    </div>
+                    {typeof v.isActive === "boolean" && (
+                      <div className="mt-1">
+                        <Badge tone={v.isActive ? "green" : "red"}>
+                          {v.isActive ? "Activo" : "Inactivo"}
+                        </Badge>
+                      </div>
+                    )}
                   </div>
-                  {v.color && (
-                    <div className="text-xs text-gray-400">Color: {v.color}</div>
-                  )}
-                </div>
 
-                <div className="col-span-3">
-                  <div className="text-white">{v.customer?.name ?? "—"}</div>
-                  <div className="text-xs text-gray-400">
-                    {v.customer?.phone ?? "—"}
-                    {v.customer?.email ? ` • ${v.customer.email}` : ""}
+                  {/* Cliente */}
+                  <div className="col-span-3">
+                    <div className="text-white">
+                      {v.customer?.name ?? "—"}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {v.customer?.phone ?? "—"}
+                      {v.customer?.email ? ` • ${v.customer.email}` : ""}
+                    </div>
                   </div>
-                </div>
 
-                <div className="col-span-2">
-                  <span
-                    className={`inline-flex items-center px-2 py-1 text-xs rounded-full ${
-                      v.status === "ACTIVE"
-                        ? "bg-green-600/20 text-green-300"
-                        : "bg-secondary-600 text-gray-300"
-                    }`}
-                  >
-                    {v.status === "ACTIVE" ? "Activo" : v.status ?? "—"}
-                  </span>
-                </div>
+                  {/* Estado (workflow) */}
+                  <div className="col-span-2">
+                    {status ? (
+                      <Badge tone={toneForStatus(status)}>{status}</Badge>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </div>
 
-                <div className="col-span-2 text-gray-300">
-                  {v.lastVisit ? new Date(v.lastVisit).toLocaleDateString() : "Sin visitas"}
-                </div>
+                  {/* Última visita */}
+                  <div className="col-span-2 text-gray-300">
+                    {v.lastVisit ? new Date(v.lastVisit).toLocaleDateString() : "Sin visitas"}
+                  </div>
 
-                <div className="col-span-1 flex justify-end gap-2">
-                  <button
-                    onClick={() => onVerFicha360(v)}
-                    className="p-2 rounded-lg bg-secondary-600 text-gray-100 hover:bg-secondary-500"
-                    title="Ver ficha 360"
-                  >
-                    <EyeIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => onEditarVehiculo(v)}
-                    className="p-2 rounded-lg bg-secondary-600 text-gray-100 hover:bg-secondary-500"
-                    title="Editar"
-                  >
-                    <PencilSquareIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => onEliminarVehiculo(v.id)}
-                    className="p-2 rounded-lg bg-red-600/80 text-white hover:bg-red-600"
-                    title="Desactivar"
-                  >
-                    <TrashIcon className="w-5 h-5" />
-                  </button>
-                </div>
-              </li>
-            ))}
+                  {/* Acciones */}
+                  <div className="col-span-1 flex justify-end gap-2">
+                    <button
+                      onClick={() => onVerFicha360(v)}
+                      className="p-2 rounded-lg bg-secondary-600 text-gray-100 hover:bg-secondary-500"
+                      title="Ver ficha 360"
+                    >
+                      <EyeIcon className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => onEditarVehiculo(v)}
+                      className="p-2 rounded-lg bg-secondary-600 text-gray-100 hover:bg-secondary-500"
+                      title="Editar"
+                    >
+                      <PencilSquareIcon className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => onEliminarVehiculo(v.id)}
+                      className="p-2 rounded-lg bg-red-600/80 text-white hover:bg-red-600"
+                      title="Desactivar"
+                    >
+                      <TrashIcon className="w-5 h-5" />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
